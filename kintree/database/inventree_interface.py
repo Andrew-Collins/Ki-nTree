@@ -458,7 +458,7 @@ def translate_supplier_to_form(supplier: str, part_info: dict) -> dict:
     return part_form
 
 
-def supplier_search(supplier: str, part_number: str, test_mode=False) -> dict:
+def supplier_search(supplier: str, part_number: str, part_manf: str = '', test_mode=False) -> dict:
     ''' Wrapper for supplier search, allow use of cached data (limited daily API calls) '''
     part_info = {}
     # Check part number exist
@@ -473,8 +473,7 @@ def supplier_search(supplier: str, part_number: str, test_mode=False) -> dict:
             store = element14_config.get(f'{supplier.upper()}_STORE', '').replace(' ', '')
         except AttributeError:
             cprint(f'\n[INFO]\tWarning: {supplier.upper()}_STORE value not found', silent=False)
-
-    search_filename = f"{settings.search_results['directory']}{supplier}{store}_{part_number}{settings.search_results['extension']}"
+    search_filename = f"{settings.search_results['directory']}{supplier}{store}_{part_number+part_manf}{settings.search_results['extension']}"
     # Get cached data, if cache is enabled (else returns None)
     part_cache = search_api.load_from_file(search_filename, test_mode)
 
@@ -484,11 +483,11 @@ def supplier_search(supplier: str, part_number: str, test_mode=False) -> dict:
     else:
         cprint(f'\n[MAIN]\t{supplier} search for {part_number}', silent=settings.SILENT)
         if supplier == 'Digi-Key':
-            part_info = digikey_api.fetch_part_info(part_number)
+            part_info = digikey_api.fetch_part_info(part_number, part_manf)
         elif supplier == 'Mouser':
-            part_info = mouser_api.fetch_part_info(part_number)
+            part_info = mouser_api.fetch_part_info(part_number, part_manf)
         elif supplier in ['Farnell', 'Newark', 'Element14']:
-            part_info = element14_api.fetch_part_info(part_number, supplier)
+            part_info = element14_api.fetch_part_info(part_number, supplier, part_manf)
         elif supplier == 'LCSC':
             part_info = lcsc_api.fetch_part_info(part_number)
         elif supplier == 'Jameco':

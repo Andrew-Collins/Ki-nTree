@@ -213,7 +213,7 @@ def build_image_url(image_data: dict, supplier: str, store_url=None) -> str:
     return image_url
 
 
-def fetch_part_info(part_number: str, supplier: str, store_url=None, silent=False) -> dict:
+def fetch_part_info(part_number: str, supplier: str, part_manf: str = '', store_url=None, silent=False) -> dict:
     ''' Fetch part data from API '''
 
     part_info = {}
@@ -231,7 +231,20 @@ def fetch_part_info(part_number: str, supplier: str, store_url=None, silent=Fals
 
     # Extract result
     try:
-        part = part['manufacturerPartNumberSearchReturn'].get('products', [])[0]
+        parts = part['manufacturerPartNumberSearchReturn'].get('products', [])
+        if len(part_manf) > 0:
+            part = None
+            for p in parts:
+                p_manf = p['brandName']
+                p_mpn = p['translatedManufacturerPartNumber']
+                if p_mpn != part_number:
+                    continue
+                if part_manf.lower() in p_manf.lower():
+                    part = p
+                    break
+        else:
+            part = parts[0]
+
     except (TypeError, IndexError):
         part = None
 

@@ -63,7 +63,7 @@ def find_categories(part_details: str):
         return None, None
 
 
-def fetch_part_info(part_number: str) -> dict:
+def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     ''' Fetch part data from API '''
 
     from wrapt_timeout_decorator import timeout
@@ -76,12 +76,24 @@ def fetch_part_info(part_number: str) -> dict:
         try:
             request = MouserPartSearchRequest('partnumber')
             request.part_search(part_number)
+            if len(part_manf) > 0:
+                resp = request.get_response()
+                parts = resp['SearchResults']['Parts']
+                for part in parts:
+                    p_manf = part['Manufacturer']
+                    p_mpn = part['ManufacturerPartNumber']
+                    if p_mpn != part_number:
+                        continue
+                    
+                    if part_manf.lower() in p_manf.lower():
+                        return part
+
+                return None
         except FileNotFoundError as e:
             error_message = repr(e.args[0])
             error_message = error_message.strip("'")
             from ..common.tools import cprint
             cprint(f'[INFO] Warning: {error_message}', silent=False)
-        finally:
             return request.get_clean_response()
 
     # Query part number

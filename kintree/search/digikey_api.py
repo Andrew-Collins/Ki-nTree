@@ -1,6 +1,7 @@
 import logging
 import os
 import digikey
+from digikey.v3.productinformation import KeywordSearchRequest
 
 from ..config import settings, config_interface
 
@@ -84,7 +85,7 @@ def find_categories(part_details: str):
         return None, None
 
 
-def fetch_part_info(part_number: str) -> dict:
+def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     ''' Fetch part data from API '''
     from wrapt_timeout_decorator import timeout
 
@@ -98,7 +99,21 @@ def fetch_part_info(part_number: str) -> dict:
     # Added logic to check the result in the GUI flow
     @timeout(dec_timeout=20)
     def digikey_search_timeout():
-        return digikey.product_details(part_number).to_dict()
+        digi_pn = part_number
+        if len(part_manf) > 0:
+            search_request = KeywordSearchRequest(keywords=part_number, record_count=10)
+            result = digikey.keyword_search(body=search_request)
+            for part in list(result.exact_manufacturer_products):
+                # print(part)
+                part = part.to_dict() 
+                p_manf = part['manufacturer']['value']
+                p_digi = part['digi_key_part_number']
+                print(p_manf + ": " + p_digi)
+
+                if part_manf.lower() in p_manf.lower():
+                    digi_pn = part['digi_key_part_number']
+                    break
+        return digikey.product_details(digi_pn).to_dict()
 
     # THIS METHOD WILL NOT WORK WITH DIGI-KEY PART NUMBERS...
     # @timeout(dec_timeout=20)

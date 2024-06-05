@@ -62,6 +62,7 @@ def fetch_part_info(part_number: str) -> dict:
     # Query part number
     try:
         part = search_timeout()
+        print(part)
     except:
         part = None
 
