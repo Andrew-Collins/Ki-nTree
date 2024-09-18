@@ -49,7 +49,6 @@ def create_part(search_form, category = [], ipn = ''):
         alt_result = inventree_interface.inventree_create_alternate(
             part_info=part_info,
             part_ipn=search_term,
-            show_progress=True,
         )
     else:
         if category is None:
@@ -109,8 +108,8 @@ def run_search(supplier, pn, manf = ''):
 
 # def main(page: ft.Page):
 def main():
-    # search_form = run_search("Digi-Key", "BAT54", "Diotec")
-    search_form = run_search("Element14", "BAT54", "Diodes Inc")
+    search_form = run_search("Digi-Key", "BAT54", "Diodes Inc")
+    # search_form = run_search("Element14", "BAT54", "Diodes Inc")
     print(search_form)
 
     inventree_interface.connect_to_server()
