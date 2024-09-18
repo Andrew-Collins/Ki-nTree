@@ -860,23 +860,23 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
     manufacturer_mpn = part_info.get('manufacturer_part_number', '')
     datasheet = part_info.get('datasheet', '')
 
-    attachment = part.getAttachments()
-    # if datasheet upload is enabled and no attachment present yet then upload
-    if settings.DATASHEET_UPLOAD and not attachment:
-        if datasheet:
-            part_info['datasheet'] = inventree_api.upload_part_datasheet(
-                datasheet_url=datasheet,
-                part_ipn=part_ipn,
-                part_pk=part_id,
-                silent=settings.SILENT,
-            )
-            if not part_info['datasheet']:
-                cprint('[TREE]\tWarning: Failed to upload part datasheet', silent=settings.SILENT)
-            else:
-                cprint('[TREE]\tSuccess: Uploaded part datasheet', silent=settings.SILENT)
-    # if an attachment is present, set it as the datasheet field
-    if attachment:
-        part_info['datasheet'] = f'{inventree_api.inventree_api.base_url.strip("/")}{attachment[0]["attachment"]}'
+    # attachment = part.getAttachments()
+    # # if datasheet upload is enabled and no attachment present yet then upload
+    # if settings.DATASHEET_UPLOAD and not attachment:
+    #     if datasheet:
+    #         part_info['datasheet'] = inventree_api.upload_part_datasheet(
+    #             datasheet_url=datasheet,
+    #             part_ipn=part_ipn,
+    #             part_pk=part_id,
+    #             silent=settings.SILENT,
+    #         )
+    #         if not part_info['datasheet']:
+    #             cprint('[TREE]\tWarning: Failed to upload part datasheet', silent=settings.SILENT)
+    #         else:
+    #             cprint('[TREE]\tSuccess: Uploaded part datasheet', silent=settings.SILENT)
+    # # if an attachment is present, set it as the datasheet field
+    # if attachment:
+    #     part_info['datasheet'] = f'{inventree_api.inventree_api.base_url.strip("/")}{attachment[0]["attachment"]}'
 
     # Create manufacturer part
     if manufacturer_name and manufacturer_mpn:
