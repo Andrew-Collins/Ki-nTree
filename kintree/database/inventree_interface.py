@@ -298,6 +298,8 @@ def translate_form_to_inventree(part_info: dict, category_tree: list, is_custom=
     inventree_part['manufacturer_name'] = part_info['manufacturer_name']
     inventree_part['manufacturer_part_number'] = part_info['manufacturer_part_number']
     inventree_part['IPN'] = part_info.get('IPN', '')
+    inventree_part['variant_of'] = part_info.get('variant', '')
+    inventree_part['is_template'] = part_info.get('template', False)
     # Replace whitespaces in URL
     inventree_part['supplier_link'] = part_info['supplier_link'].replace(' ', '%20')
     inventree_part['datasheet'] = part_info['datasheet'].replace(' ', '%20')
@@ -615,7 +617,9 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                 description=inventree_part['description'],
                 revision=inventree_part['revision'],
                 keywords=inventree_part['keywords'],
-                ipn=ipn)
+                ipn=ipn,
+                template = inventree_part['is_template'],
+                variant = inventree_part['variant_of'])
 
             # Check part primary key
             if not part_pk:
@@ -838,6 +842,12 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
         part_info=part_info,
         category_tree=category_tree,
     )
+
+    variant = inventree_part['variant_of']
+    if len(variant):
+        print("Updating variant to: ", variant)
+        inventree_api.update_part(pk=part_pk,
+                                  data={'variant_of': variant})
 
     # If the part has no image yet try to upload it from the data
     if not part.image:
