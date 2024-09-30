@@ -256,9 +256,9 @@ def get_part_info(part_id: int) -> str:
 
     part = Part(inventree_api, part_id)
     part_info = {'IPN': part.IPN}
-    attachment = part.getAttachments()
-    if attachment:
-        part_info['datasheet'] = f'{inventree_api.base_url.strip("/")}{attachment[0]["attachment"]}'
+    # attachment = part.getAttachments()
+    # if attachment:
+    #     part_info['datasheet'] = f'{inventree_api.base_url.strip("/")}{attachment[0]["attachment"]}'
     return part_info
 
 
@@ -496,12 +496,12 @@ def upload_part_datasheet(datasheet_url: str, part_ipn: int, part_pk: int, silen
         return ''
 
 
-def create_part(category_id: int, name: str, description: str, revision: str, ipn: str, keywords=None) -> int:
+def create_part(category_id: int, name: str, description: str, revision: str, ipn: str, keywords=None, template = False, variant = None) -> int:
     ''' Create InvenTree part '''
     global inventree_api
 
     try:
-        part = Part.create(inventree_api, {
+        data = {
             'name': name,
             'description': description,
             'category': category_id,
@@ -511,8 +511,12 @@ def create_part(category_id: int, name: str, description: str, revision: str, ip
             'active': True,
             'virtual': False,
             'component': True,
-            'purchaseable': True,
-        })
+            'purchaseable': not template,
+            'is_template' : template,
+        }
+        if variant: 
+            data['variant_of'] = variant
+        part = Part.create(inventree_api,  data)
     except Exception as e:
         cprint('[TREE]\tError: Part creation failed. Check if Ki-nTree settings match InvenTree part settings.', silent=settings.SILENT)
         cprint(repr(e), silent=settings.SILENT)
