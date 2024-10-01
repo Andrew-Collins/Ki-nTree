@@ -9,7 +9,7 @@ import re
 import argparse
 import sys
 import csv
-import time
+import shutil
 
 smt_sizes = ['0201', '0402', '0603', '0805','1206','1210', '1812', '2010', '2512']
 
@@ -506,7 +506,8 @@ if __name__ == "__main__":
         settings.load_inventree_settings()
 
     if args.digi_token:
-        settings.DIGIKEY_STORAGE_PATH = args.digi_token
+        shutil.copyfile(args.digi_token, "/tmp/token_storage.json")
+        settings.DIGIKEY_STORAGE_PATH = "/tmp"
 
     # settings_file = [
     #     global_settings.INVENTREE_CONFIG,
