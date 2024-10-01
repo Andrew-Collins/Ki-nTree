@@ -300,6 +300,7 @@ def translate_form_to_inventree(part_info: dict, category_tree: list, is_custom=
     inventree_part['IPN'] = part_info.get('IPN', '')
     inventree_part['variant_of'] = part_info.get('variant', '')
     inventree_part['is_template'] = part_info.get('template', False)
+    inventree_part['assembly'] = part_info.get('assembly', False)
     # Replace whitespaces in URL
     inventree_part['supplier_link'] = part_info['supplier_link'].replace(' ', '%20')
     inventree_part['datasheet'] = part_info['datasheet'].replace(' ', '%20')
@@ -619,7 +620,8 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                 keywords=inventree_part['keywords'],
                 ipn=ipn,
                 template = inventree_part['is_template'],
-                variant = inventree_part['variant_of'])
+                variant = inventree_part['variant_of'],
+                assembly = inventree_part['assembly'])
 
             # Check part primary key
             if not part_pk:
@@ -694,20 +696,20 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
             if footprint:
                 inventree_part['parameters']['Footprint'] = footprint
 
-        if not inventree_part['parameters']:
-            category_parameters = inventree_api.get_category_parameters(category_pk)
-
-            # Add category-defined parameters
-            for parameter in category_parameters:
-                inventree_part['parameters'][parameter[0]] = parameter[1]
-
-        # Create parameters
-        if len(inventree_part['parameters']) > 0:
-            if not inventree_process_parameters(
-                    part_id=part_pk,
-                    parameters=inventree_part['parameters'],
-                    show_progress=show_progress):
-                return new_part, part_pk, inventree_part
+        # if not inventree_part['parameters']:
+        #     category_parameters = inventree_api.get_category_parameters(category_pk)
+        #
+        #     # Add category-defined parameters
+        #     for parameter in category_parameters:
+        #         inventree_part['parameters'][parameter[0]] = parameter[1]
+        #
+        # # Create parameters
+        # if len(inventree_part['parameters']) > 0:
+        #     if not inventree_process_parameters(
+        #             part_id=part_pk,
+        #             parameters=inventree_part['parameters'],
+        #             show_progress=show_progress):
+        #         return new_part, part_pk, inventree_part
             
         # Create manufacturer part
         if inventree_part['manufacturer_name'] and inventree_part['manufacturer_part_number']:
@@ -828,8 +830,19 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
     part = inventree_api.fetch_part(part_id, part_ipn)
 
     if part:
+        # print("Part keys: ", part.keys())
+        # bom = part.getBomItems()
         part_pk = part.pk
         part_description = part.description
+        # print("Creating bom")
+        # bom = {
+        #     'part': part_pk,
+        #     'allow_variants': True,
+        #     'inherited': False,
+        #     'quantity': 1,
+        #     'sub_part': 457
+        # }
+        # inventree_api.add_bom_item(part_pk, bom)
         cprint(f'[INFO] Success: Found original part in database (ID = {part_pk} | Description = "{part_description}")', silent=settings.SILENT)
     else:
         cprint('[INFO] Error: Original part was not found in database', silent=settings.SILENT)
@@ -859,11 +872,11 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
         elif image:
             inventree_api.upload_part_image(image_url=image, part_id=part_pk, silent=settings.SILENT)
 
-    # create or update parameters
-    if inventree_part.get('parameters', {}):
-        inventree_process_parameters(part_id=part_pk,
-                                     parameters=inventree_part['parameters'],
-                                     show_progress=show_progress)
+    # # create or update parameters
+    # if inventree_part.get('parameters', {}):
+    #     inventree_process_parameters(part_id=part_pk,
+    #                                  parameters=inventree_part['parameters'],
+    #                                  show_progress=show_progress)
 
     # Overwrite manufacturer name with matching one from database
     manufacturer_name = inventree_fuzzy_company_match(part_info.get('manufacturer_name', ''))
