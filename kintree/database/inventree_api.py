@@ -17,7 +17,7 @@ if platform.system() == 'Linux':
 # InvenTree
 from inventree.api import InvenTreeAPI
 from inventree.company import Company, ManufacturerPart, SupplierPart, SupplierPriceBreak
-from inventree.part import Part, PartCategory, Parameter, ParameterTemplate
+from inventree.part import Part, PartCategory, Parameter, ParameterTemplate, BomItem
 from inventree.currency import CurrencyManager
 from inventree.stock import StockLocation
 from inventree.stock import StockItem
@@ -273,18 +273,22 @@ def set_part_number(part_id: int, ipn: str) -> bool:
         return False
 
 
-def get_part_from_ipn(part_ipn='') -> int:
+def get_part_from_ipn(part_ipn='', rev='') -> int | None:
     ''' Get Part ID from Part IPN '''
     global inventree_api
 
     parts = Part.list(inventree_api, IPN=part_ipn)
 
-    if not parts:
-        # No part found
-        return None
-    else:
-        # parts should have only one entry
-        return parts[0]
+    part = None
+    if parts:
+        if len(rev):
+            for res in parts:
+                if res.revision == rev:
+                    part = res 
+                    break
+        else:
+            part = parts[0]
+    return part
 
 
 def fetch_part(part_id='', part_ipn='') -> int:
@@ -496,7 +500,7 @@ def upload_part_datasheet(datasheet_url: str, part_ipn: int, part_pk: int, silen
         return ''
 
 
-def create_part(category_id: int, name: str, description: str, revision: str, ipn: str, keywords=None, template = False, variant = None) -> int:
+def create_part(category_id: int, name: str, description: str, revision: str, ipn: str, keywords=None, template = False, variant = None, assembly = False) -> int:
     ''' Create InvenTree part '''
     global inventree_api
 
@@ -510,7 +514,8 @@ def create_part(category_id: int, name: str, description: str, revision: str, ip
             'IPN': ipn,
             'active': True,
             'virtual': False,
-            'component': True,
+            'component': not assembly,
+            'assembly': assembly,
             'purchaseable': not template,
             'is_template' : template,
         }
@@ -909,3 +914,21 @@ def create_parameter(part_id: int, template_name: int, value: str):
         if template_id == 0:
             cprint(f'[TREE]\tError: Parameter template "{template_name}" does not exist', silent=settings.SILENT)
         return 0, False, False
+
+def add_bom_item(pk: int, bom: list[dict]) -> bool:
+    ''' Create BOM Item '''
+    global inventree_api
+
+    return BomItem.create(inventree_api, part=pk, data=bom)
+
+def delete_bom(pk: int) -> bool:
+    ''' Delete BOM '''
+    global inventree_api
+
+    part = Part(inventree_api, pk)
+    bom = part.getBomItems()
+    for item in bom:
+        item.delete()
+    return True
+
+

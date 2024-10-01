@@ -1,4 +1,5 @@
 from sys import exception
+from typing import is_typeddict
 from kintree.config.settings import load_cache_settings
 from kintree.gui.views.main import *
 from kintree.gui.views.settings import *
@@ -8,6 +9,7 @@ import re
 import argparse
 import sys
 import csv
+import time
 
 smt_sizes = ['0201', '0402', '0603', '0805','1206','1210', '1812', '2010', '2512']
 
@@ -30,7 +32,7 @@ usual_suppliers = ["Digi-Key", "Mouser", "Element14"]
 
 rename_supppliers = {"Digi-Key": "DigiKey"}
 
-ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': 'Standoffs & Spacers', 'FL': ['Electronic Components', 'Chokes & Filters'] }
+ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': 'Standoffs & Spacers', 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'] }
 
 settings_file = [
     global_settings.INVENTREE_CONFIG,
@@ -136,7 +138,7 @@ def res_generic(s: str, params = None) -> str:
 ref_to_generic = { 'R': res_generic, 'C': cap_generic }
 
 
-def create_part(search_form, category = [], ipn = '', template = False, variant = None):
+def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False):
     part_info = copy.deepcopy(search_form)
     part_number = part_info.get('manufacturer_part_number', None)
     # Update IPN (later overwritten)
@@ -148,54 +150,118 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
     if variant:
         part_info['variant'] = variant
     part_info['template'] = template
+    part_info['assembly'] = assembly
 
-    # Search for the IPN, falling back to the mpn
-    part = inventree_api.fetch_part('', search_term)
+    part = None
+    # Search for the IPN
+    for _retry in range(0,3):
+        try:
+            part = inventree_api.get_part_from_ipn(search_term, search_form['revision'])
+        except:
+            continue
+        break
+    part_pk = None
 
-    # part = None
-    #
-    # category_pk = inventree_api.get_inventree_category_id(category)
-    # if category_pk <= 0:
-    #     cprint(f'[ERROR]\tCategory ({category}) does not exist in InvenTree', silent=settings.SILENT)
-    #     return None
-    # else:
-    #     # Check if part already exists
-    #     part = inventree_api.is_new_part(category_pk, part_info)
-
+    # Account for revision mismatch
+    if part and part.revision != search_form['revision']:
+        part = None
 
     if part:
-        if template:
-            print("Part is template, skipping")
-            return None
+        part_pk = part.pk
+        if template or assembly:
+            print("Part is template or assembly, skipping")
+            return part_pk
         # Create alternate
-        alt_result = inventree_interface.inventree_create_alternate(
-            part_info=part_info,
-            part_ipn=search_term,
-        )
-        return part.pk
+        for _retry in range(0,3):
+            try:
+                _alt_result = inventree_interface.inventree_create_alternate(
+                    part_info=part_info,
+                    part_ipn=search_term,
+                )
+            except:
+                continue
+            break
     else:
         if category is None:
             print("Category cannot be blank when creating new part")
             return None
         part_info['category_tree'] = category
-        # part_info['category_code'] = 'CON'
-        # Category code
-        # if settings.CONFIG_IPN.get('IPN_CATEGORY_CODE', False):
-        #     if data_from_views['InvenTree'].get('Create New Code', False):
-        #         part_info['category_code'] = data_from_views['InvenTree'].get('New Category Code', '')
-        #     else:
-        #         part_info['category_code'] = data_from_views['InvenTree'].get('IPN: Category Code', '')
         # Create new part
-        new_part, part_pk, part_info = inventree_interface.inventree_create(
-            part_info=part_info,
-            kicad=False,
-            symbol=None,
-            footprint=None,
-            show_progress=False,
-            is_custom=False,
-            stock=None,
-        )
-        return part_pk
+        for _retry in range(0,3):
+            try:
+                _new_part, part_pk, part_info = inventree_interface.inventree_create(
+                    part_info=part_info,
+                    kicad=False,
+                    symbol=None,
+                    footprint=None,
+                    show_progress=False,
+                    is_custom=False,
+                    stock=None,
+                )
+            except:
+                continue
+            break
+    return part_pk
+
+def is_template(ref: str, mpn: str) -> tuple[bool, str]:
+    # Only care about the first one in the list
+    ref_split = re.split(",| |\|", ref)[0]
+    ref_prefix = ref_split.rstrip('0123456789')
+
+    return (mpn[:(len(ref_prefix)+1)] == ref_prefix + '_', ref_prefix)
+
+# bom parts must have: 'mpn','refs','qty' fields
+def create_assembly(assembly: dict, bom: list[dict]) -> bool:
+    ipn = assembly['ipn']
+    search_form = {}
+    for field in search_fields_list:
+        search_form[field] = ''
+    search_form['name'] = assembly.get('name', ipn)
+    search_form['description'] = assembly.get('desc', '')
+    search_form['revision'] = assembly['rev']
+    search_form['manufacturer_name'] = 'Micromelon'
+    search_form['manufacturer_part_number'] = ipn
+
+    overwrite = not bool(assembly.get('append', False))
+
+    inventree_interface.connect_to_server()
+
+    pk  = create_part(search_form, category = ["Assembled PCBs"], assembly=True)
+
+    if overwrite:
+        inventree_api.delete_bom(pk)
+
+    result = True
+
+    for part in bom:
+        (template_flag, _ref_prefix) = is_template(part['refs'], part['mpn'])
+        if 'micromelon' in part['manf'].lower():
+            # Must have a valid revision
+            if not len(part['rev']):
+                part['rev'] = assembly['rev']
+
+        # Search for the IPN
+        inv_part = None
+        for _retry in range(0,3):
+            try:
+                inv_part = inventree_api.get_part_from_ipn(part['mpn'], part['rev'])
+            except:
+                continue
+            break
+        part_pk = -1 
+        if inv_part:
+            part_pk = inv_part.pk
+        data = {'part': pk, 'quantity': part['qty'], 'sub_part': part_pk, 'reference': part['refs'], 'allow_variants': template_flag, 'inherited': False}
+        local_res = False
+        for _retry in range(0,3):
+            try:
+                local_res = inventree_api.add_bom_item(pk, data)
+            except:
+                continue
+            break
+        if not local_res:
+            result = False
+    return result
 
 
 def run_search(supplier, pn, manf = ''):
@@ -263,21 +329,46 @@ def find_generic(ref_prefix, search_form, raw_form, category):
     return None
 
 
-def search_and_create(part_list, variants=False):
+def search_and_create(part_list, variants=False, rev_default = '') -> bool:
     inventree_interface.connect_to_server()
+    result = True
     for part in part_list:
-        ref = part[0]
-        manf = part[1]
-        mpn = part[2]
+        ref = part['refs']
+        manf = part['manf']
+        mpn = part['mpn']
+        rev = part.get('rev', rev_default)
 
-        ref_prefix = ref.rstrip('0123456789') 
+
+        (template_flag, ref_prefix) = is_template(ref, mpn)
+
         category = ref_to_category.get(ref_prefix)
         if category is None:
             print("Unknown reference prefix: ", ref_prefix)
             continue
 
+
+        # Do not create internal parts here
+        # They will all be assemblies that should be created
+        # separately
+        if 'micromelon' in manf.lower():
+            # Must have a valid revision
+            if not len(rev):
+                print("No revision found for internal part")
+                continue
+            # Create Bare PCB part
+            if 'a' not in mpn.lower():
+                search_form = {}
+                for field in search_fields_list:
+                    search_form[field] = ''
+                search_form['name'] = mpn
+                search_form['manufacturer_name'] = manf
+                search_form['manufacturer_part_number'] = mpn
+                search_form['revision'] = rev
+                create_part(search_form, category)
+            continue
+
         # Template part
-        if mpn[:(len(ref_prefix)+1)] == ref_prefix + '_':
+        if template_flag:
             search_form = {}
             for field in search_fields_list:
                 search_form[field] = ''
@@ -287,19 +378,28 @@ def search_and_create(part_list, variants=False):
             continue
         
         generic_id = None
+        local_res = False
         for supp in usual_suppliers:
             (search_form, raw_form) = run_search(supp, mpn, manf)
             if len(search_form['name']) < 1:
                 continue
             print(search_form)
+            part = None
             # Only need to search for and update the variants once
             if variants and generic_id is None:
                 generic_id = find_generic(ref_prefix, search_form, raw_form, category)
-                create_part(search_form, category, variant=str(generic_id))
+                part = create_part(search_form, category, variant=str(generic_id))
             else:
-                create_part(search_form, category)
+                part = create_part(search_form, category)
 
+            if part:
+                local_res = True
 
+        if not local_res:
+            print("Unable to create part: ", mpn)
+            result = False
+
+    return result
 
 
 def init_argparse() -> argparse.ArgumentParser:
@@ -312,6 +412,13 @@ def init_argparse() -> argparse.ArgumentParser:
         action='store_true',
         help="Run in interactive mode"
     )
+    parser.add_argument(
+        "-a", "--assembly", required=False,
+        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False)"
+    )
+    parser.add_argument("--variants",
+                        required= False,
+                        help="Create template parts and link to variants (always on in interactive mode)")
     parser.add_argument("-p", "--path",
                         required= False,
                         help="Path to a CSV file, ';' delimited")
@@ -386,88 +493,102 @@ def get_input(name: str) -> str | None:
 
     return out
 
-
 if __name__ == "__main__":
-    search_and_create([["R1", "Panasonic","ERA-6AEB49R9V"]], variants=True)
+    # create_assembly("999999A", [{'mpn': "ERA-6AEB49R9V", 'refs': "R1", 'qty': 1}], overwrite=False)
+    # search_and_create([["R1", "Panasonic","ERA-6AEB49R9V"]], variants=True)
 
-    # parser = init_argparse()
-    # args = parser.parse_args()
-    #
-    # if args.interactive:
-    #     while 1:
-    #         ref = get_input("Type")
-    #         if ref is None or ref.upper() not in ref_to_category.keys():
-    #             print("Invalid type, valid types are: ", list(ref_to_category.keys()))
-    #             continue
-    #         manf = get_input("Manf")
-    #         if manf is None:
-    #             continue
-    #         mpn = get_input("Mpn")
-    #         if mpn is None:
-    #             continue
-    #
-    #         print("--------------------------------")
-    #         print("Type: ", ref.upper())
-    #         print("Manf: ", manf)
-    #         print("MPN: ", mpn)
-    #         confirm = input("Is this correct (Y/n): ")
-    #         if not len(confirm) or 'Y' in confirm.upper():
-    #             search_and_create([[ref.upper(), manf,mpn]])
-    #
-    #         print("--------------------------------")
-    # else: 
-    #     csv_str = args.string
-    #     if os.path.exists(args.path):
-    #         with open(args.path, 'r') as file:
-    #             csv_str = file.read()
-    #     # Remove any windows line endings
-    #     csv_str = csv_str.replace('\r', '')
-    #     # Split into lines
-    #     csv_str = csv_str.split('\n')
-    #     r = csv.reader(csv_str, delimiter=';')
-    #
-    #     ref_ind = -1
-    #     mpn_ind = -1
-    #     manf_ind = -1
-    #     header_row = 0
-    #     for row in r: 
-    #         ref_ind = -1
-    #         mpn_ind = -1
-    #         manf_ind = -1
-    #         for k in row:
-    #             i = row.index(k)
-    #             if 'ref' in k.lower():
-    #                 ref_ind = i
-    #             elif 'mpn' in k.lower():
-    #                 mpn_ind = i
-    #             elif 'manf' in k.lower():
-    #                 manf_ind = i
-    #
-    #         if manf_ind > -1 and mpn_ind > -1 and ref_ind > -1:
-    #             break
-    #
-    #
-    #     if header_row > len(row) - 2:
-    #         print("Invalid CSV Formatting, could not find all the required headers")
-    #         exit
-    #
-    #     part_list = []
-    #     max_len = max(ref_ind, mpn_ind, manf_ind) + 1
-    #     for row in list(r)[header_row + 1:]: 
-    #         if len(row) < max_len:
-    #             continue
-    #         # Only care about the first one in the list
-    #         ref = re.split(",| |\|", row[ref_ind])[0]
-    #         mpn = row[mpn_ind]
-    #         manf = row[manf_ind]
-    #
-    #         if len(ref) and len(mpn) and len(manf):
-    #             part_list.append([ref, manf, mpn])
-    #     search_and_create(part_list)
-    #
-    #
-    # # search_and_create([["D1", "onsemi","BAT54"]])
-    # # search_and_create([["R1", "","R_0603_10k_5%"]])
-    # # search_and_create([["R1", "TE Connectivity","CRGP0402F82K"]])
-    # # search_and_create([["C1", "Murata","GRM188R60J226MEA0D"]])
-    # # search_and_create([["C1", "Wurth","865080545012"]])
+    parser = init_argparse()
+    args = parser.parse_args()
+
+    if args.interactive:
+        while 1:
+            ref = get_input("Type")
+            if ref is None or ref.upper() not in ref_to_category.keys():
+                print("Invalid type, valid types are: ", list(ref_to_category.keys()))
+                continue
+            manf = get_input("Manf")
+            if manf is None:
+                continue
+            mpn = get_input("Mpn")
+            if mpn is None:
+                continue
+
+            print("--------------------------------")
+            print("Type: ", ref.upper())
+            print("Manf: ", manf)
+            print("MPN: ", mpn)
+            confirm = input("Is this correct (Y/n): ")
+            if not len(confirm) or 'Y' in confirm.upper():
+                search_and_create([[ref.upper(), manf,mpn]], variants=True)
+
+            print("--------------------------------")
+    else: 
+        csv_str = args.string
+        if os.path.exists(args.path):
+            with open(args.path, 'r') as file:
+                csv_str = file.read()
+        # Remove any windows line endings
+        csv_str = csv_str.replace('\r', '')
+        # Split into lines
+        csv_str = csv_str.split('\n')
+        r = csv.reader(csv_str, delimiter=';')
+
+        ref_ind = -1
+        mpn_ind = -1
+        manf_ind = -1
+        rev_ind = -1
+        qty_ind = -1
+        header_row = 0
+        for row in r: 
+            ref_ind = -1
+            mpn_ind = -1
+            manf_ind = -1
+            rev_ind = -1
+            qty_ind = -1
+            for k in row:
+                i = row.index(k)
+                if 'ref' in k.lower():
+                    ref_ind = i
+                elif 'mpn' in k.lower():
+                    mpn_ind = i
+                elif 'manf' in k.lower():
+                    manf_ind = i
+                elif 'qty' in k.lower() or 'quantity' in k.lower():
+                    qty_ind = i
+                elif 'rev' in k.lower() or 'revision' in k.lower():
+                    rev_ind = i
+
+            if manf_ind > -1 and mpn_ind > -1 and ref_ind > -1 and qty_ind > -1 and rev_ind > -1:
+                break
+
+
+        if header_row > len(row) - 2:
+            print("Invalid CSV Formatting, could not find all the required headers")
+            exit
+
+        part_list = []
+        part_list_dict = []
+        max_len = max(ref_ind, mpn_ind, manf_ind) + 1
+        for row in list(r)[header_row + 1:]: 
+            if len(row) < max_len:
+                continue
+            ref = row[ref_ind]
+            mpn = row[mpn_ind]
+            manf = row[manf_ind]
+            qty = row[qty_ind]
+            rev = row[rev_ind]
+
+            if len(ref) and len(mpn) and len(qty):
+                part_list.append({'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': rev})
+                # part_list.append([ref, manf, mpn])
+
+        assembly_dict = {}
+        if args.assembly:
+            assembly_dict = eval(args.assembly)
+            # IPN of board is one char less than the assembly IPN
+            # Match revision to assembly
+            part_list.append({'refs': 'BRD', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': assembly_dict['rev'], 'qty': 1})
+        res = search_and_create(part_list, args.variants)
+        if res and args.assembly:
+            res = create_assembly(assembly_dict, part_list)
+        exit(res)
