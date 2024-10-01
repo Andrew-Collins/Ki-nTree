@@ -34,17 +34,6 @@ rename_supppliers = {"Digi-Key": "DigiKey"}
 
 ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': 'Standoffs & Spacers', 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'] }
 
-settings_file = [
-    global_settings.INVENTREE_CONFIG,
-    global_settings.CONFIG_IPN_PATH,
-]
-
-settings = {
-    **config_interface.load_inventree_user_settings(settings_file[0]),
-    **config_interface.load_file(settings_file[1]),
-}
-load_cache_settings()
-
 def cap_generic(s: str, params = None) -> str:
     (val, unit,) = re.search("([0-9][.][0-9]+)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
     # Make sure 'u' or 'p' aren't capitalised
@@ -416,13 +405,20 @@ def init_argparse() -> argparse.ArgumentParser:
         "-a", "--assembly", required=False,
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False)"
     )
+    parser.add_argument(
+        "--settings_inv", required=False,
+        help="Ki-ntree Inventree settings file"
+    )
+    parser.add_argument(
+        "--settings_ipn", required=False,
+        help="Ki-ntree IPN settings file"
+    )
     parser.add_argument("--variants",
                         required= False,
                         help="Create template parts and link to variants (always on in interactive mode)")
     parser.add_argument("-p", "--path",
                         required= False,
                         help="Path to a CSV file, ';' delimited")
-
     parser.add_argument("-s", "--string",
                         required= False,
                         help="CSV string, ';' delimited")
@@ -499,6 +495,21 @@ if __name__ == "__main__":
 
     parser = init_argparse()
     args = parser.parse_args()
+    settings_file = [
+        global_settings.INVENTREE_CONFIG,
+        global_settings.CONFIG_IPN_PATH,
+    ]
+
+    if args.settings_inv:
+        settings_file[0] = args.settings_inv
+    if args.settings_ipn:
+        settings_file[1] = args.settings_ipn
+
+    settings = {
+        **config_interface.load_inventree_user_settings(settings_file[0]),
+        **config_interface.load_file(settings_file[1]),
+    }
+    load_cache_settings()
 
     if args.interactive:
         while 1:
