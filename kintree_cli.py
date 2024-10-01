@@ -535,9 +535,11 @@ if __name__ == "__main__":
             print("--------------------------------")
     else: 
         csv_str = args.string
+        print("Path: ", args.path)
         if os.path.exists(args.path):
             with open(args.path, 'r') as file:
                 csv_str = file.read()
+        print("CSV srt: ", csv_str)
         # Remove any windows line endings
         csv_str = csv_str.replace('\r', '')
         # Split into lines
