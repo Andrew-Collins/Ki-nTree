@@ -409,6 +409,10 @@ def init_argparse() -> argparse.ArgumentParser:
         "--settings", required=False,
         help="Settings file, containing inventree, IPN, and supplier API settings"
     )
+    parser.add_argument(
+        "--digi_token", required=False,
+        help="Digikey token file"
+    )
     parser.add_argument("--variants",
                         required= False,
                         help="Create template parts and link to variants (always on in interactive mode)")
@@ -500,6 +504,9 @@ if __name__ == "__main__":
 
         settings.load_ipn_settings()
         settings.load_inventree_settings()
+
+    if args.digi_token:
+        settings.DIGIKEY_STORAGE_PATH = args.digi_token
 
     # settings_file = [
     #     global_settings.INVENTREE_CONFIG,
