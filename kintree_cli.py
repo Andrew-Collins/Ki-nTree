@@ -406,12 +406,8 @@ def init_argparse() -> argparse.ArgumentParser:
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False)"
     )
     parser.add_argument(
-        "--settings_inv", required=False,
-        help="Ki-ntree Inventree settings file"
-    )
-    parser.add_argument(
-        "--settings_ipn", required=False,
-        help="Ki-ntree IPN settings file"
+        "--settings", required=False,
+        help="Settings file, containing inventree, IPN, and supplier API settings"
     )
     parser.add_argument("--variants",
                         required= False,
@@ -495,21 +491,31 @@ if __name__ == "__main__":
 
     parser = init_argparse()
     args = parser.parse_args()
-    settings_file = [
-        global_settings.INVENTREE_CONFIG,
-        global_settings.CONFIG_IPN_PATH,
-    ]
+    if args.settings:
+        settings.CONFIG_DIGIKEY_API = args.settings
+        settings.CONFIG_MOUSER_API = args.settings
+        settings.CONFIG_ELEMENT14_API = args.settings
+        settings.CONFIG_IPN_PATH = args.settings
+        settings.INVENTREE_CONFIG = args.settings
 
-    if args.settings_inv:
-        settings_file[0] = args.settings_inv
-    if args.settings_ipn:
-        settings_file[1] = args.settings_ipn
+        settings.load_ipn_settings()
+        settings.load_inventree_settings()
 
-    settings = {
-        **config_interface.load_inventree_user_settings(settings_file[0]),
-        **config_interface.load_file(settings_file[1]),
-    }
-    load_cache_settings()
+    # settings_file = [
+    #     global_settings.INVENTREE_CONFIG,
+    #     global_settings.CONFIG_IPN_PATH,
+    # ]
+    #
+    # if args.settings_inv:
+    #     settings_file[0] = args.settings_inv
+    # if args.settings_ipn:
+    #     settings_file[1] = args.settings_ipn
+    #
+    # settings = {
+    #     **config_interface.load_inventree_user_settings(settings_file[0]),
+    #     **config_interface.load_file(settings_file[1]),
+    # }
+    # load_cache_settings()
 
     if args.interactive:
         while 1:
