@@ -506,9 +506,16 @@ if __name__ == "__main__":
         settings.load_inventree_settings()
 
     if args.digi_token:
-        shutil.copyfile(args.digi_token, "/tmp/token_storage.json")
         settings.DIGIKEY_STORAGE_PATH = "/tmp"
         os.environ['DIGIKEY_STORAGE_PATH'] = settings.DIGIKEY_STORAGE_PATH
+        if not os.path.exists(os.environ['DIGIKEY_STORAGE_PATH']):
+            os.makedirs(os.environ['DIGIKEY_STORAGE_PATH'], exist_ok=True)
+        shutil.copyfile(args.digi_token, "/tmp/token_storage.json")
+        print("Copied token file to /tmp")
+        print(os.listdir("/tmp"))
+
+    # The cli checks itself, disable the later checks
+    settings.CHECK_EXISTING = False
 
     # settings_file = [
     #     global_settings.INVENTREE_CONFIG,
