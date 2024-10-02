@@ -508,6 +508,7 @@ if __name__ == "__main__":
     if args.digi_token:
         shutil.copyfile(args.digi_token, "/tmp/token_storage.json")
         settings.DIGIKEY_STORAGE_PATH = "/tmp"
+        os.environ['DIGIKEY_STORAGE_PATH'] = settings.DIGIKEY_STORAGE_PATH
 
     # settings_file = [
     #     global_settings.INVENTREE_CONFIG,
