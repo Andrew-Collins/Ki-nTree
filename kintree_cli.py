@@ -613,9 +613,12 @@ if __name__ == "__main__":
         assembly_dict = {}
         if args.assembly:
             assembly_dict = eval(args.assembly)
+            rev = assembly_dict['rev'].replace('V','')
+            rev = rev.replace('v','')
+            assembly_dict['rev'] = rev
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
-            part_list.append({'refs': 'BRD', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': assembly_dict['rev'], 'qty': 1})
+            part_list.append({'refs': 'BRD', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1})
         res = search_and_create(part_list, args.variants)
         if res and args.assembly:
             res = create_assembly(assembly_dict, part_list)
