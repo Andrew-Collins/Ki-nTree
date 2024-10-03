@@ -568,54 +568,149 @@ if __name__ == "__main__":
         csv_str = csv_str.split('\n')
         r = csv.reader(csv_str, delimiter=';')
 
-        ref_ind = -1
-        mpn_ind = -1
-        manf_ind = -1
-        rev_ind = -1
-        qty_ind = -1
+        ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn']
+        ref_dict = {}
         header_row = 0
         for row in r: 
-            ref_ind = -1
-            mpn_ind = -1
-            manf_ind = -1
-            rev_ind = -1
-            qty_ind = -1
-            for k in row:
-                i = row.index(k)
-                if 'ref' in k.lower():
-                    ref_ind = i
-                elif 'mpn' in k.lower():
-                    mpn_ind = i
-                elif 'manf' in k.lower():
-                    manf_ind = i
-                elif 'qty' in k.lower() or 'quantity' in k.lower():
-                    qty_ind = i
-                elif 'rev' in k.lower() or 'revision' in k.lower():
-                    rev_ind = i
-
-            if manf_ind > -1 and mpn_ind > -1 and ref_ind > -1 and qty_ind > -1 and rev_ind > -1:
+            ref_dict = {}
+            for item in row:
+                i = row.index(item)
+                for field in ref_fields:
+                    keys = field
+                    if type(field) == str:
+                        keys = [field]
+                    res = False
+                    for k in keys:
+                        if k == item.lower():
+                            ref_dict[keys[0]] = i
+                            res = True
+                            break
+                    if res:
+                        break
+            print(ref_dict)
+            if len(ref_dict) == len(ref_fields):
                 break
+            header_row += 1
 
 
         if header_row > len(row) - 2:
             print("Invalid CSV Formatting, could not find all the required headers")
-            exit
+            exit(1)
 
+        extra_rows = {}
+        unique_parts = {}
         part_list = []
         part_list_dict = []
-        max_len = max(ref_ind, mpn_ind, manf_ind) + 1
+        max_len = max(*ref_dict.values()) + 1
         for row in list(r)[header_row + 1:]: 
             if len(row) < max_len:
                 continue
-            ref = row[ref_ind]
-            mpn = row[mpn_ind]
-            manf = row[manf_ind]
-            qty = row[qty_ind]
-            rev = row[rev_ind]
+            conn_mpn = row[ref_dict['conn_mpn']]
+            ref = row[ref_dict['refs']]
+            # if conn_mpn is entered, conn_manf must be too
+            if len(conn_mpn):
+                # Make sure fields are stringified
+                conn_mpn = re.sub("([^\]]),[ ]*", "\g<1>', '", conn_mpn)
+                conn_mpn = re.sub("\]", "']", conn_mpn)
+                conn_mpn = re.sub("\[", "['", conn_mpn)
+                # Enclose all in square brackets
+                conn_mpn = "[" + conn_mpn + "]"
+                conn_bom = eval(conn_mpn)
+                print(conn_bom)
+                if type(conn_bom) is not list:
+                    print("Invalid conn_mpn field: ", conn_mpn)
+                extra_rows[ref] = conn_bom
+
+            mpn = row[ref_dict['mpn']]
+            manf = row[ref_dict['manf']]
+            qty = row[ref_dict['qty']]
+            rev = row[ref_dict['rev']]
 
             if len(ref) and len(mpn) and len(qty):
-                part_list.append({'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': rev})
-                # part_list.append([ref, manf, mpn])
+                part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': rev}
+                # New entry or append to existing
+                unique_item = manf + "_" + mpn + "_" + rev
+                # Combine and update
+                if unique_item in unique_parts:
+                    updated = copy.deepcopy(unique_parts[unique_item])
+                    # Combine refs
+                    updated['refs'] += ' ' + ref
+                    # Combine qty
+                    updated['qty'] += qty
+                    # Replace part_list entry with updated entry
+                    part_list[part_list.index(unique_parts[unique_item])] = updated
+                    # Replace unique_parts entry with updated entry
+                    unique_parts[unique_item] = updated
+                # New
+                else:
+                    unique_parts[unique_item] = part
+                    part_list.append(part)
+
+        # Go through extra_rows and merge
+        # [ref, manf, mpn, qty]
+        for (parent, bom) in extra_rows.items():
+            # Split the ref into individual numbers
+            par_r = re.search("([A-Z]+)\d", parent).groups()[0]
+            par_i = []
+            par_ranges = re.findall(par_r + "\d", parent)
+            for rang in par_ranges:
+                item = rang.replace(par_r, "")
+                sp = item.split('-')
+                start = int(sp[0])
+                fin = start + 1
+                # If there is a '-', then the trailing number is the end
+                if len(sp) > 1:
+                    fin = int(fin) + 1
+
+                # append all in the range (x1000)
+                for i in range(start, fin):
+                    # par_i.append(i*1000)
+                    par_i.append(i)
+
+            for entry in bom:
+                [ref, manf, mpn, qty] = entry[:4]
+                qty = int(qty)
+                rev = ''
+                # rev is optional
+                if len(entry) > 4:
+                    rev = entry[4]
+                # No need to sort into indiv items, as the formatting can stay the same
+                # The numbers have to be unique within each ref
+                qty_total = len(par_i)*qty
+                ref_inds = []
+                ref_total = ""
+                for par_n in par_i:
+                    # def ref_mult(matchobj):
+                    #     n = int(matchobj.group(0))
+                    #     return str(par_n + n)
+                    # ref_total += re.sub("\d+", ref_mult, ref) + " "
+
+                    for sub_ref in re.split(",| |\|", ref):
+                        ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
+                ref_total = ref_total[:-1]
+
+                part = {'refs': ref_total, 'manf': manf, 'mpn': mpn, 'qty': qty_total, 'rev': rev}
+
+                # Check for matches in part_list
+                unique_item = manf + "_" + mpn + "_" + rev
+
+                # Combine and update
+                if unique_item in unique_parts:
+                    updated = copy.deepcopy(unique_parts[unique_item])
+                    # Combine refs
+                    updated['refs'] += ' ' + ref
+                    # Combine qty
+                    updated['qty'] += qty
+                    # Replace part_list entry with updated entry
+                    part_list[part_list.index(unique_parts[unique_item])] = updated
+                    # Replace unique_parts entry with updated entry
+                    unique_parts[unique_item] = updated
+                # New
+                else:
+                    unique_parts[unique_item] = part
+                    part_list.append(part)
+
+        print("List: ", part_list)
 
         assembly_dict = {}
         if args.assembly:
