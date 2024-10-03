@@ -248,6 +248,7 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
                 continue
             break
         if not local_res:
+            print("Unable to add item: ", part)
             result = False
     return result
 
@@ -724,4 +725,4 @@ if __name__ == "__main__":
         res = search_and_create(part_list, args.variants)
         if res and args.assembly:
             res = create_assembly(assembly_dict, part_list)
-        exit(res)
+        exit(not res)
