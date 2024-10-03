@@ -194,8 +194,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
 
 def is_template(ref: str, mpn: str) -> tuple[bool, str]:
     # Only care about the first one in the list
-    ref_split = re.split(",| |\|", ref)[0]
-    ref_prefix = ref_split.rstrip('0123456789')
+    ref_prefix = re.search("([A-Z]+)[0123456789]", ref).groups()[0]
 
     return (mpn[:(len(ref_prefix)+1)] == ref_prefix + '_', ref_prefix)
 
