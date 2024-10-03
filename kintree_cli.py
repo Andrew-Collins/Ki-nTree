@@ -490,7 +490,8 @@ def get_input(name: str) -> str | None:
 
 if __name__ == "__main__":
     # create_assembly("999999A", [{'mpn': "ERA-6AEB49R9V", 'refs': "R1", 'qty': 1}], overwrite=False)
-    # search_and_create([["R1", "Panasonic","ERA-6AEB49R9V"]], variants=True)
+    # search_and_create([{'refs': "J1", 'manf': "Sullins",'mpn': "LPPB121NFFN-RC"}], variants=True)
+    # exit(0)
 
     parser = init_argparse()
     args = parser.parse_args()
@@ -719,7 +720,7 @@ if __name__ == "__main__":
             assembly_dict['rev'] = rev
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
-            part_list.append({'refs': 'BRD', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1})
+            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1})
         res = search_and_create(part_list, args.variants)
         if res and args.assembly:
             res = create_assembly(assembly_dict, part_list)
