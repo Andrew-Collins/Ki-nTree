@@ -35,11 +35,15 @@ rename_supppliers = {"Digi-Key": "DigiKey"}
 ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': 'Standoffs & Spacers', 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'] }
 
 def cap_generic(s: str, params = None) -> str:
-    (val, unit,) = re.search("([0-9][.][0-9]+)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
+    (val, unit, ) = re.search("([0-9]+[.]*[0-9]*)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
+    # val = ''
+    # # Allow for a missing leading zero
+    # if res:
+    #     (val, ) = res.groups()
+    # else:
+    #     (val, ) =  re.search("([0-9]*[.][0-9]+)[ ]*[µuUmpP][ ]*[Ff]*",s).groups()
     # Make sure 'u' or 'p' aren't capitalised
-    unit = unit.lower()
-    if unit == 'µ':
-        unit = 'u'
+    unit = unit.lower().replace('µ', 'u')
 
     foot = ''
     for size in smt_sizes:
@@ -79,7 +83,7 @@ def cap_generic(s: str, params = None) -> str:
             foot = "{}x{}".format(float(diameter), float(height))
 
     tol = ''
-    tol_res = re.search("([XYN][57P][RV0])",s)
+    tol_res = re.search("([XYNC][57P0][RV0G])",s)
     if tol_res is None:
         tol_key = ''
         for key in params.keys():
@@ -87,15 +91,15 @@ def cap_generic(s: str, params = None) -> str:
                 tol_key = key
                 break
         if len(tol_key):
-            (tol,) = re.search("([0-9]+[.]*[0-9]+%)",params[tol_key]).groups()
+            (tol,) = re.search("([0-9]+[.]*[0-9]*%)",params[tol_key]).groups()
         else:
-            (tol,) = re.search("([0-9]+[.]*[0-9]+%)",s).groups()
+            (tol,) = re.search("([0-9]+[.]*[0-9]*%)",s).groups()
     else:
         (tol, )  = tol_res.groups()
     (voltage,) = re.search("(\d+)[ ]*v",s.lower()).groups()
 
     if not (len(foot) and len(val) and len(unit) and len(tol) and len(voltage)):
-        raise ValueError("Unable to find all parameters")
+        raise ValueError("Unable to find all parameters: ", foot, val, unit, tol, voltage)
 
     return "C_{}_{}{}_{}".format(foot, val, unit, tol, voltage)
 
@@ -120,7 +124,7 @@ def res_generic(s: str, params = None) -> str:
     if 'metric' in s.lower():
         (foot,) = re.search("(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+",s).groups()
 
-    (tol,) = re.search("([0-9]+[.]*[0-9]+%)",s).groups()
+    (tol,) = re.search("([0-9]+[.]*[0-9]*%)",s).groups()
 
     return "R_{}_{}{}_{}".format(foot, val, unit, tol)
 
@@ -295,7 +299,7 @@ def find_generic(ref_prefix, search_form, raw_form, category):
     #     print("Unable to parse generic: ", e)
     # except:
     #     print("Unable to parse generic")
-    #
+
     if not len(generic):
         return None
 
@@ -303,7 +307,7 @@ def find_generic(ref_prefix, search_form, raw_form, category):
     part_id = inventree_api.fetch_part('', generic)
     if part_id:
         print("Found existing generic: ", generic)
-        return part_id.pk
+        return (part_id.pk, generic)
 
     print("Create new generic: '", generic, "'? (Y/n): ", end = '')
     confirm = input("")
@@ -313,7 +317,7 @@ def find_generic(ref_prefix, search_form, raw_form, category):
             search_form[field] = ''
         search_form['name'] = generic
         search_form['manufacturer_part_number'] = generic
-        return create_part(search_form, category,  template = True)
+        return (create_part(search_form, category,  template = True), generic)
     
     return None
 
@@ -376,7 +380,13 @@ def search_and_create(part_list, variants=False, rev_default = '') -> bool:
             part = None
             # Only need to search for and update the variants once
             if variants and generic_id is None:
-                generic_id = find_generic(ref_prefix, search_form, raw_form, category)
+                res = find_generic(ref_prefix, search_form, raw_form, category)
+                if res is not None:
+                    (generic_id, generic_name) = res
+                    print("Do you wish to set the name of part: ", mpn, " to :", generic_name, " ? (Y/n):", end='')
+                    confirm = input("")
+                    if not(len(confirm)) or confirm.upper() == 'Y':
+                        search_form['name'] = generic_name
                 part = create_part(search_form, category, variant=str(generic_id))
             else:
                 part = create_part(search_form, category)
@@ -536,7 +546,7 @@ if __name__ == "__main__":
 
     if args.interactive:
         while 1:
-            ref = get_input("Type")
+            ref = get_input("Type").upper()
             if ref is None or ref.upper() not in ref_to_category.keys():
                 print("Invalid type, valid types are: ", list(ref_to_category.keys()))
                 continue
@@ -548,12 +558,13 @@ if __name__ == "__main__":
                 continue
 
             print("--------------------------------")
-            print("Type: ", ref.upper())
+            print("Type: ", ref)
             print("Manf: ", manf)
             print("MPN: ", mpn)
             confirm = input("Is this correct (Y/n): ")
             if not len(confirm) or 'Y' in confirm.upper():
-                search_and_create([[ref.upper(), manf,mpn]], variants=True)
+                part = [{'refs': ref+'1', 'manf': manf, 'mpn': mpn, 'qty': 1}]
+                search_and_create(part, variants=True)
 
             print("--------------------------------")
     else: 
