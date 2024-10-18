@@ -382,11 +382,11 @@ def search_and_create(part_list, variants=False, rev_default = '') -> bool:
             if variants and generic_id is None:
                 res = find_generic(ref_prefix, search_form, raw_form, category)
                 if res is not None:
-                    (generic_id, generic_name) = res
-                    print("Do you wish to set the name of part: ", mpn, " to :", generic_name, " ? (Y/n):", end='')
-                    confirm = input("")
-                    if not(len(confirm)) or confirm.upper() == 'Y':
-                        search_form['name'] = generic_name
+                    (generic_id, _) = res
+                    # print("Do you wish to set the name of part: ", mpn, " to :", generic_name, " ? (Y/n):", end='')
+                    # confirm = input("")
+                    # if not(len(confirm)) or confirm.upper() == 'Y':
+                    #     search_form['name'] = generic_name
                 part = create_part(search_form, category, variant=str(generic_id))
             else:
                 part = create_part(search_form, category)
