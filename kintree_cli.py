@@ -385,6 +385,7 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
         if part and part.revision != rev:
             part = None
 
+        # Cannot do supplier search if no manf currently, so short circuit
         if not len(manf):
             if part:
                 # TODO: set the manufacturer and the continue as if part was not in inventree
@@ -607,7 +608,7 @@ if __name__ == "__main__":
 
         ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf']
         ref_dict = {}
-        header_row = 0
+        first_line = 0
         for row in r: 
             ref_dict = {}
             for item in row:
@@ -627,10 +628,10 @@ if __name__ == "__main__":
             print(ref_dict)
             if len(ref_dict) == len(ref_fields):
                 break
-            header_row += 1
+            first_line += 1
 
 
-        if header_row > len(row) - 2:
+        if first_line > len(row) - 1:
             print("Invalid CSV Formatting, could not find all the required headers")
             exit(1)
 
@@ -639,7 +640,7 @@ if __name__ == "__main__":
         part_list = []
         part_list_dict = []
         max_len = max(*ref_dict.values()) + 1
-        for row in list(r)[header_row + 1:]: 
+        for row in list(r)[first_line:]: 
             if len(row) < max_len:
                 continue
             conn_mpn = row[ref_dict['conn_mpn']].lstrip()
