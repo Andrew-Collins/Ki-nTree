@@ -635,10 +635,11 @@ if __name__ == "__main__":
 
             mpn = row[ref_dict['mpn']]
             manf = row[ref_dict['manf']]
-            qty = int(row[ref_dict['qty']])
+            qty = row[ref_dict['qty']]
             rev = row[ref_dict['rev']]
 
             if len(ref) and len(mpn) and len(qty):
+                qty = int(qty)
                 part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': qty, 'rev': rev}
                 # New entry or append to existing
                 unique_item = manf + "_" + mpn + "_" + rev
