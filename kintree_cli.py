@@ -386,10 +386,11 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
 
             if part:
                 # TODO: set the manufacturer and the continue as if part was not in inventree
-                return
+                continue
             else:
                 print("Part does not have manf and is not an inventree IPN: ", mpn)
-                return
+                result.append(mpn)
+                continue
 
         
         generic_id = None
