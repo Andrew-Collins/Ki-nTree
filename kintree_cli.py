@@ -369,6 +369,28 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
             search_form['manufacturer_part_number'] = mpn
             create_part(search_form, category,  template = True)
             continue
+
+        # Any part without a manf field is has an IPN specified
+        if not len(manf):
+            search_term = mpn
+            # Search for the IPN
+            for _retry in range(0,3):
+                try:
+                    part = inventree_api.get_part_from_ipn(search_term, rev)
+                except:
+                    continue
+                break
+            # Account for revision mismatch
+            if part and part.revision != rev:
+                part = None
+
+            if part:
+                # TODO: set the manufacturer and the continue as if part was not in inventree
+                return
+            else:
+                print("Part does not have manf and is not an inventree IPN: ", mpn)
+                return
+
         
         generic_id = None
         local_res = False
