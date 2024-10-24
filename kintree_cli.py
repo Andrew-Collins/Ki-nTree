@@ -617,7 +617,8 @@ if __name__ == "__main__":
         for row in list(r)[header_row + 1:]: 
             if len(row) < max_len:
                 continue
-            conn_mpn = row[ref_dict['conn_mpn']]
+            conn_mpn = row[ref_dict['conn_mpn']].lstrip()
+            conn_manf = row[ref_dict['conn_manf']].lstrip()
             ref = row[ref_dict['refs']]
             # if conn_mpn is entered, conn_manf must be too
             if len(conn_mpn):
@@ -626,8 +627,8 @@ if __name__ == "__main__":
                 conn_mpn = re.sub("\]", "']", conn_mpn)
                 conn_mpn = re.sub("\[", "['", conn_mpn)
                 # Enclose all in square brackets
-                if not (conn_mpn.startswith('[') or conn_mpn.startswith("'") or conn_mpn.startswith('"')):
-                    conn_mpn = "['" + conn_mpn + "']"
+                if not conn_mpn.startswith('['):
+                    conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "']"
                 conn_bom = eval(conn_mpn)
                 print(conn_bom)
                 if type(conn_bom) is not list:
