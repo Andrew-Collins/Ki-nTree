@@ -32,7 +32,7 @@ usual_suppliers = ["Digi-Key", "Mouser", "Element14"]
 
 rename_supppliers = {"Digi-Key": "DigiKey"}
 
-ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': 'Standoffs & Spacers', 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'] }
+ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'] }
 
 def cap_generic(s: str, params = None) -> str:
     (val, unit, ) = re.search("([0-9]+[.]*[0-9]*)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
@@ -322,9 +322,9 @@ def find_generic(ref_prefix, search_form, raw_form, category):
     return None
 
 
-def search_and_create(part_list, variants=False, rev_default = '') -> bool:
+def search_and_create(part_list, variants=False, rev_default = '') -> list:
     inventree_interface.connect_to_server()
-    result = True
+    result = []
     for part in part_list:
         ref = part['refs']
         manf = part['manf']
@@ -396,7 +396,7 @@ def search_and_create(part_list, variants=False, rev_default = '') -> bool:
 
         if not local_res:
             print("Unable to create part: ", mpn)
-            result = False
+            result.append(mpn)
 
     return result
 
@@ -580,7 +580,7 @@ if __name__ == "__main__":
         csv_str = csv_str.split('\n')
         r = csv.reader(csv_str, delimiter=';')
 
-        ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn']
+        ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf']
         ref_dict = {}
         header_row = 0
         for row in r: 
@@ -618,22 +618,25 @@ if __name__ == "__main__":
             if len(row) < max_len:
                 continue
             conn_mpn = row[ref_dict['conn_mpn']].lstrip()
-            conn_manf = row[ref_dict['conn_manf']].lstrip()
+            conn_manf = row[ref_dict.get('conn_manf', '')].lstrip()
             ref = row[ref_dict['refs']]
             # if conn_mpn is entered, conn_manf must be too
             if len(conn_mpn):
-                # Make sure fields are stringified
-                conn_mpn = re.sub("([^\]]),[ ]*", "\g<1>', '", conn_mpn)
-                conn_mpn = re.sub("\]", "']", conn_mpn)
-                conn_mpn = re.sub("\[", "['", conn_mpn)
-                # Enclose all in square brackets
                 if not conn_mpn.startswith('['):
-                    conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "']"
-                conn_bom = eval(conn_mpn)
-                print(conn_bom)
-                if type(conn_bom) is not list:
-                    print("Invalid conn_mpn field: ", conn_mpn)
-                extra_rows[ref] = conn_bom
+                    print("Invalid conn_mpn: ", conn_mpn)
+                    # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
+                else:
+                    # Make sure fields are stringified
+                    conn_mpn = re.sub("([^\]]),[ ]*", "\g<1>', '", conn_mpn)
+                    conn_mpn = re.sub("\]", "']", conn_mpn)
+                    conn_mpn = re.sub("\[", "['", conn_mpn)
+                    # Enclose all in square brackets
+                    conn_mpn = "[" + "]"
+                    conn_bom = eval(conn_mpn)
+                    print(conn_bom)
+                    if type(conn_bom) is not list:
+                        print("Invalid conn_mpn field: ", conn_mpn)
+                    extra_rows[ref] = conn_bom
 
             mpn = row[ref_dict['mpn']]
             manf = row[ref_dict['manf']]
@@ -737,6 +740,9 @@ if __name__ == "__main__":
             # Match revision to assembly
             part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1})
         res = search_and_create(part_list, args.variants)
+        if len(res):
+            print("Parts could not be added: ", res)
+        res = not len(res)
         if res and args.assembly:
             res = create_assembly(assembly_dict, part_list)
         exit(not res)
