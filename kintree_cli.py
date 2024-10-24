@@ -626,7 +626,8 @@ if __name__ == "__main__":
                 conn_mpn = re.sub("\]", "']", conn_mpn)
                 conn_mpn = re.sub("\[", "['", conn_mpn)
                 # Enclose all in square brackets
-                conn_mpn = "[" + conn_mpn + "]"
+                if not (conn_mpn.startswith('[') or conn_mpn.startswith("'") or conn_mpn.startswith('"')):
+                    conn_mpn = "['" + conn_mpn + "']"
                 conn_bom = eval(conn_mpn)
                 print(conn_bom)
                 if type(conn_bom) is not list:
