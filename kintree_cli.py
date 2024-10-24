@@ -325,11 +325,11 @@ def find_generic(ref_prefix, search_form, raw_form, category):
 def search_and_create(part_list, variants=False, rev_default = '') -> list:
     inventree_interface.connect_to_server()
     result = []
-    for part in part_list:
-        ref = part['refs']
-        manf = part['manf']
-        mpn = part['mpn']
-        rev = part.get('rev', rev_default)
+    for curr_part in part_list:
+        ref = curr_part['refs']
+        manf = curr_part['manf']
+        mpn = curr_part['mpn']
+        rev = curr_part.get('rev', rev_default)
 
 
         (template_flag, ref_prefix) = is_template(ref, mpn)
@@ -370,20 +370,22 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
             create_part(search_form, category,  template = True)
             continue
 
-        # Any part without a manf field is has an IPN specified
-        if not len(manf):
-            search_term = mpn
-            # Search for the IPN
-            for _retry in range(0,3):
-                try:
-                    part = inventree_api.get_part_from_ipn(search_term, rev)
-                except:
-                    continue
-                break
-            # Account for revision mismatch
-            if part and part.revision != rev:
-                part = None
+        local_res = False
 
+        search_term = mpn
+        # Search for the IPN
+        part = None
+        for _retry in range(0,3):
+            try:
+                part = inventree_api.get_part_from_ipn(search_term, rev)
+            except:
+                continue
+            break
+        # Account for revision mismatch
+        if part and part.revision != rev:
+            part = None
+
+        if not len(manf):
             if part:
                 # TODO: set the manufacturer and the continue as if part was not in inventree
                 continue
@@ -391,10 +393,10 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
                 print("Part does not have manf and is not an inventree IPN: ", mpn)
                 result.append(mpn)
                 continue
-
+        elif part:
+            local_res = True
         
         generic_id = None
-        local_res = False
         for supp in usual_suppliers:
             (search_form, raw_form) = run_search(supp, mpn, manf)
             if len(search_form['name']) < 1:
