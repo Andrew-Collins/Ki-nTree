@@ -101,7 +101,7 @@ def cap_generic(s: str, params = None) -> str:
     if not (len(foot) and len(val) and len(unit) and len(tol) and len(voltage)):
         raise ValueError("Unable to find all parameters: ", foot, val, unit, tol, voltage)
 
-    return "C_{}_{}{}_{}".format(foot, val, unit, tol, voltage)
+    return "C_{}_{}{}_{}V_{}".format(foot, val, unit, voltage, tol)
 
 def res_generic(s: str, params = None) -> str:
     (val, unit, _ohm,) = re.search("([0-9]+[.]*[0-9]+)[ ]*([kKmM])*[ ]*([Oo][Hh][Mm])*",s).groups()
@@ -293,12 +293,12 @@ def run_search(supplier, pn, manf = ''):
 
 def find_generic(ref_prefix, search_form, raw_form, category):
     generic = ''
-    # try: 
-    generic = ref_to_generic[ref_prefix](search_form['description'], params=raw_form['parameters'])
-    # except ValueError as e:
-    #     print("Unable to parse generic: ", e)
-    # except:
-    #     print("Unable to parse generic")
+    try: 
+        generic = ref_to_generic[ref_prefix](search_form['description'], params=raw_form['parameters'])
+    except ValueError as e:
+        print("Unable to parse generic: ", e)
+    except:
+        print("Unable to parse generic")
 
     if not len(generic):
         return None
