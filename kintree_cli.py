@@ -653,15 +653,17 @@ if __name__ == "__main__":
                     # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
                 else:
                     # Make sure fields are stringified
-                    conn_mpn = re.sub("([^\]]),[ ]*", "\g<1>', '", conn_mpn)
+                    conn_mpn = re.sub("([^\]]),", "\g<1>', '", conn_mpn)
                     conn_mpn = re.sub("\]", "']", conn_mpn)
                     conn_mpn = re.sub("\[", "['", conn_mpn)
                     # Enclose all in square brackets
-                    conn_mpn = "[" + "]"
+                    conn_mpn = "[" + conn_mpn + "]"
                     conn_bom = eval(conn_mpn)
-                    print(conn_bom)
                     if type(conn_bom) is not list:
                         print("Invalid conn_mpn field: ", conn_mpn)
+                    for j in range(0, len(conn_bom)):
+                        for i in range(0, len(conn_bom[j])):
+                            conn_bom[j][i] = conn_bom[j][i].lstrip()
                     extra_rows[ref] = conn_bom
 
             mpn = row[ref_dict['mpn']]
