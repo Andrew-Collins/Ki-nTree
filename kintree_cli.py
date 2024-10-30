@@ -213,6 +213,9 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     search_form['revision'] = assembly['rev']
     search_form['manufacturer_name'] = 'Micromelon'
     search_form['manufacturer_part_number'] = ipn
+    images = assembly_dict.get('image', [])
+    if len(images) > 1:
+        search_form['image'] = images[1]
 
     overwrite = not bool(assembly.get('append', False))
 
@@ -357,6 +360,8 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
                 search_form['manufacturer_name'] = manf
                 search_form['manufacturer_part_number'] = mpn
                 search_form['revision'] = rev
+                if len(curr_part.get('image', '')):
+                    search_form['image'] = curr_part['image']
                 create_part(search_form, category)
             continue
 
@@ -439,7 +444,7 @@ def init_argparse() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-a", "--assembly", required=False,
-        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False)"
+        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), images (optional, [PCB image, PCBA image] defaults to [])"
     )
     parser.add_argument(
         "--settings", required=False,
@@ -764,9 +769,14 @@ if __name__ == "__main__":
             rev = assembly_dict['rev'].replace('V','')
             rev = rev.replace('v','')
             assembly_dict['rev'] = rev
+            images = assembly_dict.get('image', [])
+            pcb_image = ''
+            if len(images):
+                pcb_image = images[0]
+
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
-            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1})
+            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image})
         res = search_and_create(part_list, args.variants)
         if len(res):
             print("Parts could not be added: ", res)

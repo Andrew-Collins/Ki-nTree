@@ -451,8 +451,11 @@ def upload_part_image(image_url: str, part_id: int, silent=False) -> bool:
     image_name = f'{str(part_id)}_thumbnail.jpeg'
     image_location = settings.search_images + image_name
 
+    # If not a url, then use it as a path
+    if not image_url.startswith('http'):
+        image_location = image_url
     # Download image (multiple attempts)
-    if not download_with_retry(image_url, image_location, filetype='Image', silent=silent):
+    elif not download_with_retry(image_url, image_location, filetype='Image', silent=silent):
         return False
 
     # Upload image to InvenTree
