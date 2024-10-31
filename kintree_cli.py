@@ -209,7 +209,9 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     for field in search_fields_list:
         search_form[field] = ''
     search_form['name'] = assembly.get('name', ipn)
-    search_form['description'] = assembly.get('desc', '')
+    desc = assembly.get('desc', '')
+    if len(desc):
+        search_form['description'] = 'PCB Assembly ' + desc
     search_form['revision'] = assembly['rev']
     search_form['manufacturer_name'] = 'Micromelon'
     search_form['manufacturer_part_number'] = ipn
@@ -362,6 +364,8 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
                 search_form['revision'] = rev
                 if len(curr_part.get('image', '')):
                     search_form['image'] = curr_part['image']
+                if len(curr_part.get('desc', '')):
+                    search_form['description'] = curr_part['desc']
                 create_part(search_form, category)
             continue
 
@@ -773,10 +777,12 @@ if __name__ == "__main__":
             pcb_image = ''
             if len(images):
                 pcb_image = images[0]
-
+            desc = assembly_dict.get('desc', '')
+            if len(desc):
+                desc = 'PCB ' + desc
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
-            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image})
+            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc})
         res = search_and_create(part_list, args.variants)
         if len(res):
             print("Parts could not be added: ", res)
