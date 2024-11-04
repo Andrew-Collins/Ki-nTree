@@ -220,14 +220,18 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
         search_form['image'] = images[1]
 
     attachments = assembly_dict.get('attachments', [])
-    if len(images) > 1:
-        search_form['attachments'] = attachments[1]
+    if len(attachments) > 1:
+        attachments = attachments[1]
 
     overwrite = not bool(assembly.get('append', False))
 
     inventree_interface.connect_to_server()
 
     pk  = create_part(search_form, category = ["Assembled PCBs"], assembly=True)
+
+    if pk and len(attachments):
+        for attachment in attachments:
+            inventree_api.upload_part_attachment(attachment, pk)
 
     if overwrite:
         inventree_api.delete_bom(pk)
