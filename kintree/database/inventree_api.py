@@ -469,6 +469,21 @@ def upload_part_image(image_url: str, part_id: int, silent=False) -> bool:
         return False
 
 
+def upload_part_attachment(attachment_path: str, part_pk: int) -> str:
+    ''' Upload InvenTree part attachment'''
+    global inventree_api
+
+    # Upload Datasheet to InvenTree
+    part = Part(inventree_api, part_pk)
+    if part:
+        try:
+            attachment = part.uploadAttachment(attachment=attachment_path)
+            return f'{inventree_api.base_url.strip("/")}{attachment["attachment"]}'
+        except Exception:
+            return ''
+    else:
+        return ''
+
 def upload_part_datasheet(datasheet_url: str, part_ipn: int, part_pk: int, silent=False) -> str:
     ''' Upload InvenTree part attachment'''
     global inventree_api

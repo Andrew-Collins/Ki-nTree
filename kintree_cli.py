@@ -219,6 +219,10 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     if len(images) > 1:
         search_form['image'] = images[1]
 
+    attachments = assembly_dict.get('attachments', [])
+    if len(images) > 1:
+        search_form['attachments'] = attachments[1]
+
     overwrite = not bool(assembly.get('append', False))
 
     inventree_interface.connect_to_server()
@@ -366,7 +370,10 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
                     search_form['image'] = curr_part['image']
                 if len(curr_part.get('desc', '')):
                     search_form['description'] = curr_part['desc']
-                create_part(search_form, category)
+                part_pk = create_part(search_form, category)
+                if part_pk and len(curr_part.get('attachments', '')):
+                    for attachment in curr_part['attachments']:
+                        inventree_api.upload_part_attachment(attachment, part_pk)
             continue
 
         # Template part
@@ -417,13 +424,15 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
             if variants and generic_id is None:
                 res = find_generic(ref_prefix, search_form, raw_form, category)
                 if res is not None:
-                    (generic_id, _) = res
+                    (generic_id, generic_name) = res
+                    print("Doing generic")
                     # print("Do you wish to set the name of part: ", mpn, " to :", generic_name, " ? (Y/n):", end='')
                     # confirm = input("")
                     # if not(len(confirm)) or confirm.upper() == 'Y':
-                    #     search_form['name'] = generic_name
-                part = create_part(search_form, category, variant=str(generic_id))
+                    search_form['name'] = generic_name
+                part = create_part(search_form, category, variant=generic_id)
             else:
+                print("Creating normal")
                 part = create_part(search_form, category)
 
             if part:
@@ -448,7 +457,7 @@ def init_argparse() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-a", "--assembly", required=False,
-        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), images (optional, [PCB image, PCBA image] defaults to [])"
+        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), images (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
     )
     parser.add_argument(
         "--settings", required=False,
@@ -657,23 +666,35 @@ if __name__ == "__main__":
             ref = row[ref_dict['refs']]
             # if conn_mpn is entered, conn_manf must be too
             if len(conn_mpn):
-                if not conn_mpn.startswith('['):
+                if not conn_mpn.startswith('[') or not conn_mpn.startswith('{'):
                     print("Invalid conn_mpn: ", conn_mpn)
                     # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
                 else:
                     # Make sure fields are stringified
                     conn_mpn = re.sub("([^\]]),", "\g<1>', '", conn_mpn)
+                    conn_mpn = re.sub("([^\]]):", "\g<1>', '", conn_mpn)
                     conn_mpn = re.sub("\]", "']", conn_mpn)
                     conn_mpn = re.sub("\[", "['", conn_mpn)
-                    # Enclose all in square brackets
-                    conn_mpn = "[" + conn_mpn + "]"
+                    # Only the opening dict bracket needs to be quoted
+                    conn_mpn = re.sub("{", "{'", conn_mpn)
+                    # Enclose all in square brackets if not dict or already an overall list
+                    if not conn_mpn.startswith('{') or not conn_mpn.startswith("[["):
+                        conn_mpn = "[" + conn_mpn + "]"
                     conn_bom = eval(conn_mpn)
-                    if type(conn_bom) is not list:
+                    bom_type = type(conn_bom)
+                    if bom_type not in [list, dict]:
                         print("Invalid conn_mpn field: ", conn_mpn)
-                    for j in range(0, len(conn_bom)):
-                        for i in range(0, len(conn_bom[j])):
-                            conn_bom[j][i] = conn_bom[j][i].lstrip()
-                    extra_rows[ref] = conn_bom
+                    if bom_type == dict:
+                        for k,v in bom_type:
+                            for j in range(0, len(v)):
+                                for i in range(0, len(v[j])):
+                                    v[j][i] = conn_bom[j][i].lstrip()
+                            extra_rows[k][ref] = v
+                    else:
+                        for j in range(0, len(conn_bom)):
+                            for i in range(0, len(conn_bom[j])):
+                                conn_bom[j][i] = conn_bom[j][i].lstrip()
+                        extra_rows['curr'][ref] = conn_bom
 
             mpn = row[ref_dict['mpn']]
             manf = row[ref_dict['manf']]
@@ -774,15 +795,18 @@ if __name__ == "__main__":
             rev = rev.replace('v','')
             assembly_dict['rev'] = rev
             images = assembly_dict.get('image', [])
+            attachments = assembly_dict.get('attachments', [])
             pcb_image = ''
             if len(images):
                 pcb_image = images[0]
+            if len(attachments):
+                attachments = attachments[0]
             desc = assembly_dict.get('desc', '')
             if len(desc):
                 desc = 'PCB ' + desc
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
-            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc})
+            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
         res = search_and_create(part_list, args.variants)
         if len(res):
             print("Parts could not be added: ", res)
