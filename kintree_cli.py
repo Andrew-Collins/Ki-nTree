@@ -461,7 +461,7 @@ def init_argparse() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-a", "--assembly", required=False,
-        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), images (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
+        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
     )
     parser.add_argument(
         "--settings", required=False,
@@ -616,12 +616,18 @@ if __name__ == "__main__":
 
             print("--------------------------------")
     else: 
+        assembly_dict = {}
+        board_ipn = ''
+        if args.assembly:
+            assembly_dict = eval(args.assembly)
+            board_ipn = assembly_dict['ipn']
+
         csv_str = args.string
         print("Path: ", args.path)
         if os.path.exists(args.path):
             with open(args.path, 'r') as file:
                 csv_str = file.read()
-        print("CSV srt: ", csv_str)
+        print("CSV str: ", csv_str)
         # Remove any windows line endings
         csv_str = csv_str.replace('\r', '')
         # Split into lines
@@ -658,6 +664,7 @@ if __name__ == "__main__":
             exit(1)
 
         extra_rows = {}
+        extra_assemblies = {}
         unique_parts = {}
         part_list = []
         part_list_dict = []
@@ -670,35 +677,43 @@ if __name__ == "__main__":
             ref = row[ref_dict['refs']]
             # if conn_mpn is entered, conn_manf must be too
             if len(conn_mpn):
-                if not conn_mpn.startswith('[') or not conn_mpn.startswith('{'):
+                if not (conn_mpn.startswith('[') or conn_mpn.startswith('{')):
                     print("Invalid conn_mpn: ", conn_mpn)
                     # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
                 else:
                     # Make sure fields are stringified
+                    conn_mpn = re.sub("\[[\s\t]*\[", "[[", conn_mpn)
+                    conn_mpn = re.sub("\][\s\t]*\]", "]]", conn_mpn)
                     conn_mpn = re.sub("([^\]]),", "\g<1>', '", conn_mpn)
-                    conn_mpn = re.sub("([^\]]):", "\g<1>', '", conn_mpn)
-                    conn_mpn = re.sub("\]", "']", conn_mpn)
-                    conn_mpn = re.sub("\[", "['", conn_mpn)
+                    conn_mpn = re.sub("([^\]]): ", "\g<1>': ", conn_mpn)
+                    conn_mpn = re.sub("([^\]])\]", "\g<1>']", conn_mpn)
+                    conn_mpn = re.sub("\[([^\[])", "['\g<1>", conn_mpn)
                     # Only the opening dict bracket needs to be quoted
                     conn_mpn = re.sub("{", "{'", conn_mpn)
                     # Enclose all in square brackets if not dict or already an overall list
-                    if not conn_mpn.startswith('{') or not conn_mpn.startswith("[["):
+                    if not (conn_mpn.startswith('{') or conn_mpn.startswith("[[")):
                         conn_mpn = "[" + conn_mpn + "]"
                     conn_bom = eval(conn_mpn)
                     bom_type = type(conn_bom)
                     if bom_type not in [list, dict]:
                         print("Invalid conn_mpn field: ", conn_mpn)
+
+                    print("type: ", bom_type)
                     if bom_type == dict:
-                        for k,v in bom_type:
+                        for k,v in conn_bom.items():
                             for j in range(0, len(v)):
                                 for i in range(0, len(v[j])):
-                                    v[j][i] = conn_bom[j][i].lstrip()
+                                    v[j][i] = v[j][i].lstrip()
+                            if k not in extra_rows.keys():
+                                extra_rows[k] = {}
                             extra_rows[k][ref] = v
                     else:
                         for j in range(0, len(conn_bom)):
                             for i in range(0, len(conn_bom[j])):
                                 conn_bom[j][i] = conn_bom[j][i].lstrip()
-                        extra_rows['curr'][ref] = conn_bom
+                        if board_ipn not in extra_rows.keys():
+                            extra_rows[board_ipn] = {}
+                        extra_rows[board_ipn][ref] = conn_bom
 
             mpn = row[ref_dict['mpn']]
             manf = row[ref_dict['manf']]
@@ -728,73 +743,79 @@ if __name__ == "__main__":
 
         # Go through extra_rows and merge
         # [ref, manf, mpn, qty]
-        for (parent, bom) in extra_rows.items():
-            # Split the ref into individual numbers
-            par_r = re.search("([A-Z]+)\d", parent).groups()[0]
-            par_i = []
-            par_ranges = re.findall(par_r + "\d", parent)
-            for rang in par_ranges:
-                item = rang.replace(par_r, "")
-                sp = item.split('-')
-                start = int(sp[0])
-                fin = start + 1
-                # If there is a '-', then the trailing number is the end
-                if len(sp) > 1:
-                    fin = int(fin) + 1
+        for (board, d) in extra_rows.items():
+            for (parent, bom) in d.items():
+                # Split the ref into individual numbers
+                par_r = re.search("([A-Z]+)\d", parent).groups()[0]
+                par_i = []
+                par_ranges = re.findall(par_r + "\d", parent)
+                for rang in par_ranges:
+                    item = rang.replace(par_r, "")
+                    sp = item.split('-')
+                    start = int(sp[0])
+                    fin = start + 1
+                    # If there is a '-', then the trailing number is the end
+                    if len(sp) > 1:
+                        fin = int(fin) + 1
 
-                # append all in the range (x1000)
-                for i in range(start, fin):
-                    # par_i.append(i*1000)
-                    par_i.append(i)
+                    # append all in the range (x1000)
+                    for i in range(start, fin):
+                        # par_i.append(i*1000)
+                        par_i.append(i)
 
-            for entry in bom:
-                [ref, manf, mpn, qty] = entry[:4]
-                qty = int(qty)
-                rev = ''
-                # rev is optional
-                if len(entry) > 4:
-                    rev = entry[4]
-                # No need to sort into indiv items, as the formatting can stay the same
-                # The numbers have to be unique within each ref
-                qty_total = len(par_i)*qty
-                ref_inds = []
-                ref_total = ""
-                for par_n in par_i:
-                    # def ref_mult(matchobj):
-                    #     n = int(matchobj.group(0))
-                    #     return str(par_n + n)
-                    # ref_total += re.sub("\d+", ref_mult, ref) + " "
+                for entry in bom:
+                    [ref, manf, mpn, qty] = entry[:4]
+                    qty = int(qty)
+                    rev = ''
+                    # rev is optional
+                    if len(entry) > 4:
+                        rev = entry[4]
+                    # No need to sort into indiv items, as the formatting can stay the same
+                    # The numbers have to be unique within each ref
+                    qty_total = len(par_i)*qty
+                    ref_inds = []
+                    ref_total = ""
+                    for par_n in par_i:
+                        # def ref_mult(matchobj):
+                        #     n = int(matchobj.group(0))
+                        #     return str(par_n + n)
+                        # ref_total += re.sub("\d+", ref_mult, ref) + " "
 
-                    for sub_ref in re.split(",| |\|", ref):
-                        ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
-                ref_total = ref_total[:-1]
+                        for sub_ref in re.split(",| |\|", ref):
+                            ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
+                    ref_total = ref_total[:-1]
 
-                part = {'refs': ref_total, 'manf': manf, 'mpn': mpn, 'qty': qty_total, 'rev': rev}
+                    part = {'refs': ref_total, 'manf': manf, 'mpn': mpn, 'qty': qty_total, 'rev': rev}
 
-                # Check for matches in part_list
-                unique_item = manf + "_" + mpn + "_" + rev
+                    # Check for matches in part_list
+                    unique_item = manf + "_" + mpn + "_" + rev
 
-                # Combine and update
-                if unique_item in unique_parts:
-                    updated = copy.deepcopy(unique_parts[unique_item])
-                    # Combine refs
-                    updated['refs'] += ' ' + ref
-                    # Combine qty
-                    updated['qty'] += qty
-                    # Replace part_list entry with updated entry
-                    part_list[part_list.index(unique_parts[unique_item])] = updated
-                    # Replace unique_parts entry with updated entry
-                    unique_parts[unique_item] = updated
-                # New
-                else:
-                    unique_parts[unique_item] = part
-                    part_list.append(part)
+                    if board == board_ipn:
+                        # Combine and update
+                        if unique_item in unique_parts:
+                            updated = copy.deepcopy(unique_parts[unique_item])
+                            # Combine refs
+                            updated['refs'] += ' ' + ref
+                            # Combine qty
+                            updated['qty'] += qty
+                            # Replace part_list entry with updated entry
+                            part_list[part_list.index(unique_parts[unique_item])] = updated
+                            # Replace unique_parts entry with updated entry
+                            unique_parts[unique_item] = updated
+                        # New
+                        else:
+                            unique_parts[unique_item] = part
+                            part_list.append(part)
+                    else:
+                        if board not in extra_assemblies.keys():
+                            extra_assemblies[board] = []
+                        part['refs'] += ":" + board_ipn 
+                        extra_assemblies[board].append(part)
+
 
         print("List: ", part_list)
 
-        assembly_dict = {}
-        if args.assembly:
-            assembly_dict = eval(args.assembly)
+        if len(assembly_dict):
             rev = assembly_dict['rev'].replace('V','')
             rev = rev.replace('v','')
             assembly_dict['rev'] = rev
@@ -816,5 +837,12 @@ if __name__ == "__main__":
             print("Parts could not be added: ", res)
         res = not len(res)
         if res and args.assembly:
-            res = create_assembly(assembly_dict, part_list)
+            res &= create_assembly(assembly_dict, part_list)
+            for board, board_list in extra_assemblies.items():
+                assembly_dict['ipn'] = board
+                assembly_dict['name'] = board
+                assembly_dict['desc'] = ''
+                assembly_dict['image'] = []
+                assembly_dict['attachments'] = []
+                res &= create_assembly(assembly_dict, board_list)
         exit(not res)
