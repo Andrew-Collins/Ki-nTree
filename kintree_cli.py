@@ -131,7 +131,7 @@ def res_generic(s: str, params = None) -> str:
 ref_to_generic = { 'R': res_generic, 'C': cap_generic }
 
 
-def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False):
+def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False):
     part_info = copy.deepcopy(search_form)
     part_number = part_info.get('manufacturer_part_number', None)
     # Update IPN (later overwritten)
@@ -144,6 +144,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
         part_info['variant'] = variant
     part_info['template'] = template
     part_info['assembly'] = assembly
+    part_info['trackable'] = trackable
 
     part = None
     # Search for the IPN
@@ -370,6 +371,7 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
                 search_form['manufacturer_name'] = manf
                 search_form['manufacturer_part_number'] = mpn
                 search_form['revision'] = rev
+                search_form['trackable'] = True
                 if len(curr_part.get('image', '')):
                     search_form['image'] = curr_part['image']
                 if len(curr_part.get('desc', '')):

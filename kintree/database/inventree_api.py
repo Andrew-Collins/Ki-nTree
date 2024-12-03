@@ -518,7 +518,7 @@ def upload_part_datasheet(datasheet_url: str, part_ipn: int, part_pk: int, silen
         return ''
 
 
-def create_part(category_id: int, name: str, description: str, revision: str, ipn: str, keywords=None, template = False, variant = None, assembly = False) -> int:
+def create_part(category_id: int, name: str, description: str, revision: str, ipn: str, keywords=None, template = False, variant = None, assembly = False, trackable = False) -> int:
     ''' Create InvenTree part '''
     global inventree_api
 
@@ -532,10 +532,11 @@ def create_part(category_id: int, name: str, description: str, revision: str, ip
             'IPN': ipn,
             'active': True,
             'virtual': False,
-            'component': not assembly,
+            'component': True,
             'assembly': assembly,
-            'purchaseable': not template,
+            'purchaseable': not template and not assembly,
             'is_template' : template,
+            'trackable': assembly or (not template and trackable),
         }
         if variant: 
             data['variant_of'] = variant
