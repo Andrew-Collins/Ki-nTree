@@ -336,7 +336,7 @@ def find_generic(ref_prefix, search_form, raw_form, category):
     return None
 
 
-def search_and_create(part_list, variants=False, rev_default = '') -> list:
+def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list:
     inventree_interface.connect_to_server()
     result = []
     for curr_part in part_list:
@@ -362,8 +362,21 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
             if not len(rev):
                 print("No revision found for internal part")
                 continue
+
+            part = None
+            for _retry in range(0,3):
+                try:
+                    part = inventree_api.get_part_from_ipn(search_term, rev)
+                except:
+                    continue
+                break
+            if part is not None:
+                print("Found existing part/rev: ", mpn, "/", rev)
+                result.append(mpn)
+                continue
+                
             # Create Bare PCB part
-            if 'a' not in mpn.lower():
+            elif not dry and 'a' not in mpn.lower():
                 search_form = {}
                 for field in search_fields_list:
                     search_form[field] = ''
@@ -383,7 +396,7 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
             continue
 
         # Template part
-        if template_flag:
+        if not dry and template_flag:
             search_form = {}
             for field in search_fields_list:
                 search_form[field] = ''
@@ -424,7 +437,10 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
             (search_form, raw_form) = run_search(supp, mpn, manf)
             if len(search_form['name']) < 1:
                 continue
+            local_res = True
             print(search_form)
+            if dry:
+                continue
             part = None
             # Only need to search for and update the variants once
             if variants and generic_id is None:
@@ -441,8 +457,6 @@ def search_and_create(part_list, variants=False, rev_default = '') -> list:
                 print("Creating normal")
                 part = create_part(search_form, category)
 
-            if part:
-                local_res = True
 
         if not local_res:
             print("Unable to create part: ", mpn)
@@ -464,6 +478,11 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument(
         "-a", "--assembly", required=False,
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
+    )
+    parser.add_argument(
+         "--dry", required=False,
+        action='store_true',
+        help="Do not create parts in inventree"
     )
     parser.add_argument(
         "--settings", required=False,
@@ -614,7 +633,7 @@ if __name__ == "__main__":
             confirm = input("Is this correct (Y/n): ")
             if not len(confirm) or 'Y' in confirm.upper():
                 part = [{'refs': ref+'1', 'manf': manf, 'mpn': mpn, 'qty': 1}]
-                search_and_create(part, variants=True)
+                search_and_create(part, False, variants=True)
 
             print("--------------------------------")
     else: 
@@ -834,11 +853,11 @@ if __name__ == "__main__":
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
             part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
-        res = search_and_create(part_list, args.variants)
+        res = search_and_create(part_list, args.dry, args.variants)
         if len(res):
             print("Parts could not be added: ", res)
         res = not len(res)
-        if res and args.assembly:
+        if not args.dry and res and args.assembly:
             res &= create_assembly(assembly_dict, part_list)
             for board, board_list in extra_assemblies.items():
                 assembly_dict['ipn'] = board
