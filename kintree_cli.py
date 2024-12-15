@@ -1,4 +1,3 @@
-import sys
 from kintree.kintree_cli import main
 
 if __name__ == '__main__':

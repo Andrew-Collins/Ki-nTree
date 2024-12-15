@@ -465,44 +465,6 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
     return result
 
 
-def init_argparse() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        usage="%(prog)s [option] ... [input]",
-        description="Add or modify inventree parts"
-    )
-    parser.add_argument(
-        "-i", "--interactive", required=False,
-        action='store_true',
-        help="Run in interactive mode"
-    )
-    parser.add_argument(
-        "-a", "--assembly", required=False,
-        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
-    )
-    parser.add_argument(
-         "--dry", required=False,
-        action='store_true',
-        help="Do not create parts in inventree"
-    )
-    parser.add_argument(
-        "--settings", required=False,
-        help="Settings file, containing inventree, IPN, and supplier API settings"
-    )
-    parser.add_argument(
-        "--digi_token", required=False,
-        help="Digikey token file"
-    )
-    parser.add_argument("--variants",
-                        required= False,
-                        help="Create template parts and link to variants (always on in interactive mode)")
-    parser.add_argument("-p", "--path",
-                        required= False,
-                        help="Path to a CSV file, ';' delimited")
-    parser.add_argument("-s", "--string",
-                        required= False,
-                        help="CSV string, ';' delimited")
-
-    return parser
 
 import sys,tty,os,termios
 def getkey():
@@ -568,6 +530,45 @@ def get_input(name: str) -> str | None:
 
     return out
 
+def init_argparse() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        usage="%(prog)s [option] ... [input]",
+        description="Add or modify inventree parts"
+    )
+    parser.add_argument(
+        "-i", "--interactive", required=False,
+        action='store_true',
+        help="Run in interactive mode"
+    )
+    parser.add_argument(
+        "-a", "--assembly", required=False,
+        help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
+    )
+    parser.add_argument(
+         "--dry", required=False,
+        action='store_true',
+        help="Do not create parts in inventree"
+    )
+    parser.add_argument(
+        "--settings", required=False,
+        help="Settings file, containing inventree, IPN, and supplier API settings"
+    )
+    parser.add_argument(
+        "--digi_token", required=False,
+        help="Digikey token file"
+    )
+    parser.add_argument("--variants",
+                        required= False,
+                        help="Create template parts and link to variants (always on in interactive mode)")
+    parser.add_argument("-p", "--path",
+                        required= False,
+                        help="Path to a CSV file, ';' delimited")
+    parser.add_argument("-s", "--string",
+                        required= False,
+                        help="CSV string, ';' delimited")
+
+    return parser
+
 def main():
 # if __name__ == "__main__":
     # create_assembly("999999A", [{'mpn': "ERA-6AEB49R9V", 'refs': "R1", 'qty': 1}], overwrite=False)
@@ -576,6 +577,7 @@ def main():
 
     parser = init_argparse()
     args = parser.parse_args()
+
     if args.settings:
         settings.CONFIG_DIGIKEY_API = args.settings
         settings.CONFIG_MOUSER_API = args.settings
