@@ -8,7 +8,15 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 homepage = "https://github.com/sparkmicro/Ki-nTree"
 repository = "https://github.com/sparkmicro/Ki-nTree"
-keywords = ["inventree", "kicad", "digikey", "mouser", "component", "part", "create"]
+keywords = [
+  "inventree",
+  "kicad",
+  "digikey",
+  "mouser",
+  "component",
+  "part",
+  "create",
+]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.13"
@@ -32,6 +40,7 @@ coveralls = "^3.3.1"
 
 [tool.poetry.scripts]
 kintree = 'kintree.kintree_gui:main'
+kintree-cli = 'kintree.kintree_cli:main'
 kintree_setup_inventree = 'kintree.setup_inventree:setup_inventree'
 
 [build-system]
