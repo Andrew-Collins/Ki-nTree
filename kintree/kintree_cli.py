@@ -216,11 +216,11 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     search_form['revision'] = assembly['rev']
     search_form['manufacturer_name'] = 'Micromelon'
     search_form['manufacturer_part_number'] = ipn
-    images = assembly_dict.get('image', [])
+    images = assembly.get('image', [])
     if len(images) > 1:
         search_form['image'] = images[1]
 
-    attachments = assembly_dict.get('attachments', [])
+    attachments = assembly.get('attachments', [])
     if len(attachments) > 1:
         attachments = attachments[1]
 
