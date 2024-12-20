@@ -621,7 +621,7 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                 ipn=ipn,
                 template = inventree_part['is_template'],
                 variant = inventree_part['variant_of'],
-                trackable = inventree_part['trackable'],
+                trackable = inventree_part.get('trackable', False),
                 assembly = inventree_part['assembly'])
 
             # Check part primary key

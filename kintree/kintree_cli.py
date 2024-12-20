@@ -337,6 +337,7 @@ def find_generic(ref_prefix, search_form, raw_form, category):
 
 
 def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list:
+    print("Dry: ", dry)
     inventree_interface.connect_to_server()
     result = []
     for curr_part in part_list:
@@ -384,12 +385,11 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                 search_form['manufacturer_name'] = manf
                 search_form['manufacturer_part_number'] = mpn
                 search_form['revision'] = rev
-                search_form['trackable'] = True
                 if len(curr_part.get('image', '')):
                     search_form['image'] = curr_part['image']
                 if len(curr_part.get('desc', '')):
                     search_form['description'] = curr_part['desc']
-                part_pk = create_part(search_form, category)
+                part_pk = create_part(search_form, category, trackable=True)
                 if part_pk and len(curr_part.get('attachments', '')):
                     for attachment in curr_part['attachments']:
                         inventree_api.upload_part_attachment(attachment, part_pk)
@@ -438,21 +438,25 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             if len(search_form['name']) < 1:
                 continue
             local_res = True
-            print(search_form)
+            print("Found part")
             if dry:
                 continue
+            print("Post Dry")
             part = None
             # Only need to search for and update the variants once
             if variants and generic_id is None:
                 res = find_generic(ref_prefix, search_form, raw_form, category)
+                var = None
                 if res is not None:
                     (generic_id, generic_name) = res
-                    print("Doing generic")
+                    print("Setting generic var")
+                    var = generic_id
                     # print("Do you wish to set the name of part: ", mpn, " to :", generic_name, " ? (Y/n):", end='')
                     # confirm = input("")
                     # if not(len(confirm)) or confirm.upper() == 'Y':
-                    search_form['name'] = generic_name
-                part = create_part(search_form, category, variant=generic_id)
+                    # search_form['name'] = generic_name
+                print("Creating normal")
+                part = create_part(search_form, category, variant=var)
             else:
                 print("Creating normal")
                 part = create_part(search_form, category)
