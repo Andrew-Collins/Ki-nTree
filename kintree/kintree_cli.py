@@ -35,7 +35,8 @@ rename_supppliers = {"Digi-Key": "DigiKey"}
 ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'] }
 
 def cap_generic(s: str, params = None) -> str:
-    (val, unit, ) = re.search("([0-9]+[.]*[0-9]*)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
+    cap_units = ['p','n','u','m','']
+    (val, unit, ) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
     # val = ''
     # # Allow for a missing leading zero
     # if res:
@@ -44,6 +45,11 @@ def cap_generic(s: str, params = None) -> str:
     #     (val, ) =  re.search("([0-9]*[.][0-9]+)[ ]*[µuUmpP][ ]*[Ff]*",s).groups()
     # Make sure 'u' or 'p' aren't capitalised
     unit = unit.lower().replace('µ', 'u')
+
+    # Increase the unit if >1000
+    while float(val) > 1000 and len(unit):
+        val = str(int(float(val)/1000))
+        unit = cap_units[cap_units.index(unit) + 1]
 
     foot = ''
     for size in smt_sizes:
@@ -77,8 +83,8 @@ def cap_generic(s: str, params = None) -> str:
             if len(height_key) == 0 or len(size_key) == 0:
                 raise ValueError("Keys for can cap not found")
             # 'mm' is appended in case of a unitless field
-            (height,) = re.search("([0-9]+[.][0-9]+)[ ]*mm",params[height_key]+"mm").groups()
-            (diameter,) = re.search("([0-9]+[.][0-9]+)[ ]*mm",params[size_key]+"mm").groups()
+            (height,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*mm",params[height_key]+"mm").groups()
+            (diameter,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*mm",params[size_key]+"mm").groups()
             # Convert to float to remove trailing zeros
             foot = "{}x{}".format(float(diameter), float(height))
 
@@ -96,7 +102,7 @@ def cap_generic(s: str, params = None) -> str:
             (tol,) = re.search("([0-9]+[.]*[0-9]*%)",s).groups()
     else:
         (tol, )  = tol_res.groups()
-    (voltage,) = re.search("(\d+)[ ]*v",s.lower()).groups()
+    (voltage,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*v",s.lower()).groups()
 
     if not (len(foot) and len(val) and len(unit) and len(tol) and len(voltage)):
         raise ValueError("Unable to find all parameters: ", foot, val, unit, tol, voltage)
@@ -104,8 +110,8 @@ def cap_generic(s: str, params = None) -> str:
     return "C_{}_{}{}_{}V_{}".format(foot, val, unit, voltage, tol)
 
 def res_generic(s: str, params = None) -> str:
-    (val, unit, _ohm,) = re.search("([0-9]+[.]*[0-9]*)[ ](?!mw|mW|w|W)*([kKmMrR])*[ ]*([Oo][Hh][Mm])*",s).groups()
-    print("val: ", val, " unit: ", unit, " ohm: ", _ohm)
+    (val, unit,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ](?!mw|mW|w|W)*([kKmMrR])*[ ]*(?:[Oo][Hh][Mm])*",s).groups()
+    # print("val: ", val, " unit: ", unit)
     # Make sure 'k' isn't capitalised
     if unit is None:
         unit = 'R'
@@ -127,7 +133,7 @@ def res_generic(s: str, params = None) -> str:
     if 'metric' in s.lower():
         (foot,) = re.search("(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+",s).groups()
 
-    (tol,) = re.search("([0-9]+[.]*[0-9]*%)",s).groups()
+    (tol,) = re.search("((?:[0-9]*[.])?[0-9]+%)",s).groups()
 
     return "R_{}_{}{}_{}".format(foot, val, unit, tol)
 
@@ -310,8 +316,6 @@ def run_search(supplier, pn, manf = ''):
 
 def find_generic(ref_prefix, search_form, raw_form, category, create = False):
     generic = ''
-    print("desc: ", search_form['description'])
-    print("params: ", raw_form['parameters'])
     try: 
         generic = ref_to_generic[ref_prefix](search_form['description'], params=raw_form['parameters'])
     except ValueError as e:
