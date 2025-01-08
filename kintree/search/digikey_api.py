@@ -1,7 +1,7 @@
 import logging
 import os
 import digikey
-from digikey.v3.productinformation import KeywordSearchRequest
+from digikey.v4.productinformation import KeywordRequest
 
 from ..config import settings, config_interface
 
@@ -107,19 +107,25 @@ def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     def digikey_search_timeout():
         digi_pn = part_number
         if len(part_manf) > 0:
-            search_request = KeywordSearchRequest(keywords=part_number, record_count=10)
+            search_request = KeywordRequest(keywords=part_number, limit=10)
             result = digikey.keyword_search(body=search_request)
-            for part in list(result.exact_manufacturer_products):
-                # print(part)
-                part = part.to_dict() 
-                p_manf = part['manufacturer']['value']
-                p_digi = part['digi_key_part_number']
-                print(p_manf + ": " + p_digi)
+            # print("part manf: ", result.exact_matches)
+            for part in result.exact_matches:
+                if part_manf.lower() not in part.manufacturer.name.lower():
+                    continue
 
-                if part_manf.lower() in p_manf.lower():
-                    digi_pn = part['digi_key_part_number']
-                    break
-        return digikey.product_details(digi_pn).to_dict()
+                for var in part.product_variations:
+                    if 'cut' in var.package_type.name:
+                        digi_pn = var.digi_key_product_number  
+                        break
+
+        return digikey.product_details(
+            digi_pn,
+            x_digikey_locale_site=os.environ['DIGIKEY_LOCAL_SITE'],
+            x_digikey_locale_language=os.environ['DIGIKEY_LOCAL_LANGUAGE'],
+            x_digikey_locale_currency=os.environ['DIGIKEY_LOCAL_CURRENCY'],
+        ).to_dict()
+        # return digikey.product_details(digi_pn).to_dict()
 
     # Method to process price breaks
     def process_price_break(product_variation):
@@ -132,7 +138,8 @@ def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     # Query part number
     try:
         part = digikey_search_timeout()
-    except:
+    except Exception as e:
+        print(e)
         part = None
 
     if not part:
