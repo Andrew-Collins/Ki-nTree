@@ -104,12 +104,15 @@ def cap_generic(s: str, params = None) -> str:
     return "C_{}_{}{}_{}V_{}".format(foot, val, unit, voltage, tol)
 
 def res_generic(s: str, params = None) -> str:
-    (val, unit, _ohm,) = re.search("([0-9]+[.]*[0-9]+)[ ]*([kKmM])*[ ]*([Oo][Hh][Mm])*",s).groups()
+    (val, unit, _ohm,) = re.search("([0-9]+[.]*[0-9]*)[ ](?!mw|mW|w|W)*([kKmMrR])*[ ]*([Oo][Hh][Mm])*",s).groups()
+    print("val: ", val, " unit: ", unit, " ohm: ", _ohm)
     # Make sure 'k' isn't capitalised
     if unit is None:
         unit = 'R'
-    if unit.lower() == 'k':
+    elif unit.lower() == 'k':
         unit = 'k'
+    elif unit.lower() == 'r':
+        unit = 'R'
 
     if '.' in val:
         val = val.replace('.', unit)
@@ -305,8 +308,10 @@ def run_search(supplier, pn, manf = ''):
 
     return (search_form, part_supplier_info)
 
-def find_generic(ref_prefix, search_form, raw_form, category):
+def find_generic(ref_prefix, search_form, raw_form, category, create = False):
     generic = ''
+    print("desc: ", search_form['description'])
+    print("params: ", raw_form['parameters'])
     try: 
         generic = ref_to_generic[ref_prefix](search_form['description'], params=raw_form['parameters'])
     except ValueError as e:
@@ -323,15 +328,19 @@ def find_generic(ref_prefix, search_form, raw_form, category):
         print("Found existing generic: ", generic)
         return (part_id.pk, generic)
 
-    print("Create new generic: '", generic, "'? (Y/n): ", end = '')
-    confirm = input("")
-    if not(len(confirm)) or confirm.upper() == 'Y':
-        search_form = {}
-        for field in search_fields_list:
-            search_form[field] = ''
-        search_form['name'] = generic
-        search_form['manufacturer_part_number'] = generic
-        return (create_part(search_form, category,  template = True), generic)
+
+    if create:
+        print("Create new generic: '", generic, "'? (Y/n): ", end = '')
+        confirm = input("")
+        if not(len(confirm)) or confirm.upper() == 'Y':
+            search_form = {}
+            for field in search_fields_list:
+                search_form[field] = ''
+            search_form['name'] = generic
+            search_form['manufacturer_part_number'] = generic
+            return (create_part(search_form, category,  template = True), generic)
+    else:
+        return (0, generic)
     
     return None
 
@@ -439,28 +448,21 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                 continue
             local_res = True
             print("Found part")
-            if dry:
-                continue
-            print("Post Dry")
             part = None
+            var = None
             # Only need to search for and update the variants once
-            if variants and generic_id is None:
-                res = find_generic(ref_prefix, search_form, raw_form, category)
-                var = None
+            if generic_id is None:
+                res = find_generic(ref_prefix, search_form, raw_form, category, variants and dry)
                 if res is not None:
                     (generic_id, generic_name) = res
-                    print("Setting generic var")
-                    var = generic_id
-                    # print("Do you wish to set the name of part: ", mpn, " to :", generic_name, " ? (Y/n):", end='')
-                    # confirm = input("")
-                    # if not(len(confirm)) or confirm.upper() == 'Y':
-                    # search_form['name'] = generic_name
-                print("Creating normal")
-                part = create_part(search_form, category, variant=var)
-            else:
-                print("Creating normal")
-                part = create_part(search_form, category)
-
+                    if variants:
+                        var = generic_id
+                    elif generic_name not in result:
+                        result.append((mpn, generic_name))
+            if dry:
+                continue
+            print("Creating normal")
+            part = create_part(search_form, category, variant=var)
 
         if not local_res:
             print("Unable to create part: ", mpn)
@@ -622,8 +624,9 @@ def main():
 
     if args.interactive:
         while 1:
-            ref = get_input("Type").upper()
-            if ref is None or ref.upper() not in ref_to_category.keys():
+            print("Valid Types: ", list(ref_to_category.keys()))
+            ref = (get_input("Type") or '').upper()
+            if not len(ref) or ref not in ref_to_category.keys():
                 print("Invalid type, valid types are: ", list(ref_to_category.keys()))
                 continue
             manf = get_input("Manf")
@@ -861,6 +864,15 @@ def main():
             # Match revision to assembly
             part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
         res = search_and_create(part_list, args.dry, args.variants)
+        possible_generics = []
+        for part in res:
+            if type(part) is tuple:
+                possible_generics.append(part)
+
+        for part in possible_generics:
+            res.remove(part)
+            print(part[0], " could be replaced by: ", part[1])
+
         if len(res):
             print("Parts could not be added: ", res)
         res = not len(res)
