@@ -551,6 +551,11 @@ def init_argparse() -> argparse.ArgumentParser:
         help="Run in interactive mode"
     )
     parser.add_argument(
+        "-r", "--replace", required=False,
+        action='store_true',
+        help="Replace parts with generics"
+    )
+    parser.add_argument(
         "-a", "--assembly", required=False,
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
     )
@@ -849,6 +854,12 @@ def main():
 
 
         print("List: ", part_list)
+        print("Extra assemblies: ", extra_assemblies)
+
+        if args.replace:
+            #
+            print("Found mpns with generics")
+
 
         if len(assembly_dict):
             rev = assembly_dict['rev'].replace('V','')
