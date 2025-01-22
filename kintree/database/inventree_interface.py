@@ -713,7 +713,7 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
         #         return new_part, part_pk, inventree_part
             
         # Create manufacturer part
-        if inventree_part['manufacturer_name'] and inventree_part['manufacturer_part_number']:
+        if not(inventree_part['assembly'] or inventree_part['template']) and inventree_part['manufacturer_name'] and inventree_part['manufacturer_part_number']:
             # Overwrite manufacturer name with matching one from database
             manufacturer_name = inventree_fuzzy_company_match(inventree_part['manufacturer_name'])
             # Get MPN
