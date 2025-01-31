@@ -456,7 +456,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             var = None
             # Only need to search for and update the variants once
             if generic_id is None:
-                res = find_generic(ref_prefix, search_form, raw_form, category, variants and dry)
+                res = find_generic(ref_prefix, search_form, raw_form, category, variants and not dry)
                 if res is not None:
                     (generic_id, generic_name) = res
                     if variants:
