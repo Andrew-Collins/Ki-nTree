@@ -139,6 +139,14 @@ def res_generic(s: str, params = None) -> str:
 
 ref_to_generic = { 'R': res_generic, 'C': cap_generic }
 
+def delete_failed_parts():
+    cnt = 0
+    while 1:
+        part = inventree_api.delete_part_from_ipn(part_ipn='000000-00')
+        # Delete at most 3 at a time for safety
+        if cnt >= 2 or part is None:
+            break
+        cnt += 1
 
 def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False):
     part_info = copy.deepcopy(search_form)
@@ -182,6 +190,8 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     part_ipn=search_term,
                 )
             except:
+                print("Failed alternate")
+                delete_failed_parts()
                 continue
             break
     else:
@@ -202,6 +212,8 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     stock=None,
                 )
             except:
+                print("Failed new")
+                delete_failed_parts()
                 continue
             break
     return part_pk
