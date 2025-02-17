@@ -317,6 +317,17 @@ def fetch_part(part_id='', part_ipn='') -> int:
     return part
 
 
+def delete_part_from_ipn(part_ipn='', rev='') -> int | None:
+    part = get_part_from_ipn(part_ipn, rev)
+    pk = None
+    if part is not None:
+        print("Deleting: ", part.pk)
+        pk = part.pk
+        part.save(data={'active': False})
+        part.delete()
+    return pk
+
+
 def is_new_part(category_id: int, part_info: dict) -> int:
     ''' Check if part exists based on parameters (or description) '''
     global inventree_api
