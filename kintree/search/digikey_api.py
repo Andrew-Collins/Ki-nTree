@@ -105,17 +105,21 @@ def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     # Added logic to check the result in the GUI flow
     @timeout(dec_timeout=20)
     def digikey_search_timeout():
-        digi_pn = part_number
-        search_request = KeywordRequest(keywords=part_number + part_manf, limit=10)
+        digi_pn = None
+        search_request = KeywordRequest(keywords=part_number + ' ' + part_manf, limit=10)
         result = digikey.keyword_search(body=search_request)
-        for part in result.exact_matches:
-            if len(part_manf) > 0 and part_manf.lower() not in part.manufacturer.name.lower():
-                continue
+        # Only match on the first one
+        # Don't check manf here as we already searched with it
+        # and the name can be different
+        part = result.products[0]
+        # Use the first variation by default
+        digi_pn = part.product_variations[0].digi_key_product_number
+        # But For reels try and get cut tape
+        for var in part.product_variations:
+            if 'cut' in var.package_type.name.lower():
+                digi_pn = var.digi_key_product_number  
+                break
 
-            for var in part.product_variations:
-                if 'cut' in var.package_type.name:
-                    digi_pn = var.digi_key_product_number  
-                    break
 
         return digikey.product_details(
             digi_pn,
