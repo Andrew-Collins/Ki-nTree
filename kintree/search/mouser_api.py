@@ -74,8 +74,8 @@ def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     @timeout(dec_timeout=20)
     def search_timeout():
         try:
-            request = MouserPartSearchRequest('partnumber')
-            request.part_search(part_number)
+            request = MouserPartSearchRequest('keyword')
+            request.keyword_search(part_number + ' ' + part_manf)
             if len(part_manf) > 0:
                 resp = request.get_response()
                 parts = resp['SearchResults']['Parts']

@@ -161,7 +161,7 @@ def get_default_store_url(supplier: str) -> str:
     return STORES[supplier][default_store]
 
 
-def build_api_url(part_number: str, supplier: str, store_url=None, silent=False) -> str:
+def build_api_url(part_number: str, manf: str, supplier: str, store_url=None, silent=False) -> str:
     ''' Build API URL based on user settings '''
 
     user_settings = config_interface.load_file(settings.CONFIG_ELEMENT14_API)
@@ -188,7 +188,7 @@ def build_api_url(part_number: str, supplier: str, store_url=None, silent=False)
     # Set store URL
     api_url += f'&storeInfo.id={store_url}'
     # Set part number
-    api_url += f'&term=manuPartNum:{part_number}'
+    api_url += f'&term=any:{part_number}+{manf}'
 
     return api_url
 
@@ -219,7 +219,7 @@ def fetch_part_info(part_number: str, supplier: str, part_manf: str = '', store_
     part_info = {}
 
     def search_timeout(timeout=10):
-        url = build_api_url(part_number, supplier, store_url, silent)
+        url = build_api_url(part_number, part_manf, supplier, store_url, silent)
         response = download(url, timeout=timeout)
         return response
 
@@ -231,7 +231,7 @@ def fetch_part_info(part_number: str, supplier: str, part_manf: str = '', store_
 
     # Extract result
     try:
-        parts = part['manufacturerPartNumberSearchReturn'].get('products', [])
+        parts = part['keywordSearchReturn'].get('products', [])
         if len(part_manf) > 0:
             part = None
             for p in parts:

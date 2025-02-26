@@ -106,18 +106,16 @@ def fetch_part_info(part_number: str, part_manf: str = '' ) -> dict:
     @timeout(dec_timeout=20)
     def digikey_search_timeout():
         digi_pn = part_number
-        if len(part_manf) > 0:
-            search_request = KeywordRequest(keywords=part_number, limit=10)
-            result = digikey.keyword_search(body=search_request)
-            # print("part manf: ", result.exact_matches)
-            for part in result.exact_matches:
-                if part_manf.lower() not in part.manufacturer.name.lower():
-                    continue
+        search_request = KeywordRequest(keywords=part_number + part_manf, limit=10)
+        result = digikey.keyword_search(body=search_request)
+        for part in result.exact_matches:
+            if len(part_manf) > 0 and part_manf.lower() not in part.manufacturer.name.lower():
+                continue
 
-                for var in part.product_variations:
-                    if 'cut' in var.package_type.name:
-                        digi_pn = var.digi_key_product_number  
-                        break
+            for var in part.product_variations:
+                if 'cut' in var.package_type.name:
+                    digi_pn = var.digi_key_product_number  
+                    break
 
         return digikey.product_details(
             digi_pn,
