@@ -1,4 +1,11 @@
 from ..common.tools import download
+import random
+import string
+import urllib.parse
+import urllib.request
+import hashlib
+import time
+import requests
 
 SEARCH_HEADERS = [
     'productDescEn',
@@ -56,8 +63,29 @@ def fetch_part_info(part_number: str) -> dict:
 
     def search_timeout(timeout=10):
         url = lcsc_api_settings.get('LCSC_API_URL', '') + part_number
-        response = download(url, timeout=timeout)
-        return response
+        key = lcsc_api_settings.get('LCSC_API_KEY', '')
+        secret = lcsc_api_settings.get('LCSC_API_SECRET', '')
+
+        payload = {}
+        payload = [(key, value) for key, value in payload.items()]
+        payload.sort(key=lambda x: x[0])
+        newPayload = {
+            "key": key,
+            "nonce": "".join(random.choices(string.ascii_lowercase, k=16)),
+            "secret": secret,
+            "timestamp": str(int(time.time())),
+        }
+        for k, v in payload:
+            newPayload[k] = v
+        payloadStr = urllib.parse.urlencode(newPayload).encode("utf-8")
+        newPayload["signature"] = hashlib.sha1(payloadStr).hexdigest()
+
+        response = requests.get(url, params=newPayload)
+        data_json = response.json()
+        print(data_json)
+        return data_json
+        # response = download(url, timeout=timeout)
+        # return response
 
     # Query part number
     try:
@@ -126,7 +154,6 @@ def fetch_part_info(part_number: str) -> dict:
                 cprint(f'[INFO]\tWarning: Extra field "{extra_field}" not found in search results', silent=False)
 
     return part_info
-
 
 def test_api() -> bool:
     ''' Test method for API '''

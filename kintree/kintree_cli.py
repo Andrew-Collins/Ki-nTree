@@ -28,7 +28,7 @@ search_fields_list = [
     'image',
 ]
 
-usual_suppliers = ["Digi-Key", "Mouser", "Element14"]
+usual_suppliers = ["Digi-Key", "Mouser", "Element14", "LCSC"]
 
 rename_supppliers = {"Digi-Key": "DigiKey"}
 
