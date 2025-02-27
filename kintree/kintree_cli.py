@@ -715,6 +715,7 @@ def main():
             print("Invalid CSV Formatting, could not find all the required headers")
             exit(1)
 
+        blank_parts = []
         extra_rows = {}
         extra_assemblies = {}
         unique_parts = {}
@@ -772,26 +773,32 @@ def main():
             qty = row[ref_dict['qty']]
             rev = row[ref_dict['rev']]
 
-            if len(ref) and len(mpn) and len(qty):
-                qty = int(qty)
-                part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': qty, 'rev': rev}
-                # New entry or append to existing
-                unique_item = manf + "_" + mpn + "_" + rev
-                # Combine and update
-                if unique_item in unique_parts:
-                    updated = copy.deepcopy(unique_parts[unique_item])
-                    # Combine refs
-                    updated['refs'] += ' ' + ref
-                    # Combine qty
-                    updated['qty'] += qty
-                    # Replace part_list entry with updated entry
-                    part_list[part_list.index(unique_parts[unique_item])] = updated
-                    # Replace unique_parts entry with updated entry
-                    unique_parts[unique_item] = updated
-                # New
-                else:
-                    unique_parts[unique_item] = part
-                    part_list.append(part)
+            valid_flag = len(ref) and len(qty)
+            if not valid_flag:
+                continue
+            elif not len(mpn):
+                blank_parts.append(ref)
+                continue
+
+            qty = int(qty)
+            part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': qty, 'rev': rev}
+            # New entry or append to existing
+            unique_item = manf + "_" + mpn + "_" + rev
+            # Combine and update
+            if unique_item in unique_parts:
+                updated = copy.deepcopy(unique_parts[unique_item])
+                # Combine refs
+                updated['refs'] += ' ' + ref
+                # Combine qty
+                updated['qty'] += qty
+                # Replace part_list entry with updated entry
+                part_list[part_list.index(unique_parts[unique_item])] = updated
+                # Replace unique_parts entry with updated entry
+                unique_parts[unique_item] = updated
+            # New
+            else:
+                unique_parts[unique_item] = part
+                part_list.append(part)
 
         # Go through extra_rows and merge
         # [ref, manf, mpn, qty]
@@ -902,7 +909,10 @@ def main():
 
         if len(res):
             print("Parts could not be added: ", res)
-        res = not len(res)
+        if len(blank_parts):
+            print("Parts have no mpn: ", blank_parts)
+
+        res = not len(res) and not len(blank_parts)
         if not args.dry and res and args.assembly:
             res &= create_assembly(assembly_dict, part_list)
             for board, board_list in extra_assemblies.items():
