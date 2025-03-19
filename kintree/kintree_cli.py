@@ -168,40 +168,28 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
     for _retry in range(0,3):
         try:
             part = inventree_api.get_part_from_ipn(search_term, search_form['revision'])
-        except:
-            continue
-        break
-    part_pk = None
+            part_pk = None
 
-    # Account for revision mismatch
-    if part and part.revision != search_form['revision']:
-        part = None
+            # Account for revision mismatch
+            if part and part.revision != search_form['revision']:
+                part = None
 
-    if part:
-        part_pk = part.pk
-        if template or assembly:
-            print("Part is template or assembly, skipping")
-            return part_pk
-        # Create alternate
-        for _retry in range(0,3):
-            try:
+            if part:
+                part_pk = part.pk
+                if template or assembly:
+                    print("Part is template or assembly, skipping")
+                    return part_pk
+                # Create alternate
                 _alt_result = inventree_interface.inventree_create_alternate(
                     part_info=part_info,
                     part_ipn=search_term,
                 )
-            except:
-                print("Failed alternate")
-                delete_failed_parts()
-                continue
-            break
-    else:
-        if category is None:
-            print("Category cannot be blank when creating new part")
-            return None
-        part_info['category_tree'] = category
-        # Create new part
-        for _retry in range(0,3):
-            try:
+            else:
+                if category is None:
+                    print("Category cannot be blank when creating new part")
+                    return None
+                part_info['category_tree'] = category
+                # Create new part
                 _new_part, part_pk, part_info = inventree_interface.inventree_create(
                     part_info=part_info,
                     kicad=False,
@@ -211,11 +199,10 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     is_custom=False,
                     stock=None,
                 )
-            except:
-                print("Failed new")
-                delete_failed_parts()
-                continue
             break
+        except Exception as e:
+            print("create_part error: ", e)
+            continue
     return part_pk
 
 def is_template(ref: str, mpn: str) -> tuple[bool, str]:
