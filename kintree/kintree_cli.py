@@ -148,6 +148,19 @@ def delete_failed_parts():
             break
         cnt += 1
 
+
+def find_part(mpn, rev):
+    part = None
+    # Search for the IPN
+    for _retry in range(0,3):
+        try:
+            part = inventree_api.get_part_from_ipn(mpn, rev)
+        except:
+            continue
+        break;
+    return part
+
+
 def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False):
     part_info = copy.deepcopy(search_form)
     part_number = part_info.get('manufacturer_part_number', None)
@@ -559,6 +572,11 @@ def init_argparse() -> argparse.ArgumentParser:
         help="Replace parts with generics"
     )
     parser.add_argument(
+        "-c", "--check", required=False,
+        action='store_true',
+        help="Check if parts exist"
+    )
+    parser.add_argument(
         "-a", "--assembly", required=False,
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
     )
@@ -634,6 +652,61 @@ def main():
     # }
     # load_cache_settings()
 
+    csv_str = args.string
+    print("Path: ", args.path)
+    if not(args.path is None) and os.path.exists(args.path):
+        with open(args.path, 'r') as file:
+            csv_str = file.read()
+    print("CSV str: ", csv_str)
+    # Remove any windows line endings
+    csv_str = csv_str.replace('\r', '')
+    # Split into lines
+    csv_str = csv_str.split('\n')
+    r = csv.reader(csv_str, delimiter=';')
+
+    ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf']
+    ref_dict = {}
+    first_line = 0
+    for row in r: 
+        ref_dict = {}
+        for item in row:
+            print("Item: ", item)
+            i = row.index(item)
+            for field in ref_fields:
+                keys = field
+                if type(field) == str:
+                    keys = [field]
+                res = False
+                for k in keys:
+                    if k == item.lower():
+                        ref_dict[keys[0]] = i
+                        res = True
+                        break
+                if res:
+                    break
+        print(ref_dict)
+        if len(ref_dict) == len(ref_fields):
+            break
+        first_line += 1
+
+
+    if first_line > len(row) - 1:
+        print("Invalid CSV Formatting, could not find all the required headers")
+        exit(1)
+
+    if args.check:
+        inventree_interface.connect_to_server()
+        res = True
+        for row in list(r)[first_line:]: 
+            mpn = row[ref_dict['mpn']].lstrip()
+            rev = row[ref_dict['rev']].lstrip()
+            local_res = find_part(mpn, rev) is None
+            if local_res:
+                print("Unable to find part: ", mpn, " ", rev)
+            res &= not local_res
+        exit(not res)
+
+
     if args.interactive:
         while 1:
             print("Valid Types: ", list(ref_to_category.keys()))
@@ -665,46 +738,6 @@ def main():
             assembly_dict = eval(args.assembly)
             board_ipn = assembly_dict['ipn']
 
-        csv_str = args.string
-        print("Path: ", args.path)
-        if os.path.exists(args.path):
-            with open(args.path, 'r') as file:
-                csv_str = file.read()
-        print("CSV str: ", csv_str)
-        # Remove any windows line endings
-        csv_str = csv_str.replace('\r', '')
-        # Split into lines
-        csv_str = csv_str.split('\n')
-        r = csv.reader(csv_str, delimiter=';')
-
-        ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf']
-        ref_dict = {}
-        first_line = 0
-        for row in r: 
-            ref_dict = {}
-            for item in row:
-                i = row.index(item)
-                for field in ref_fields:
-                    keys = field
-                    if type(field) == str:
-                        keys = [field]
-                    res = False
-                    for k in keys:
-                        if k == item.lower():
-                            ref_dict[keys[0]] = i
-                            res = True
-                            break
-                    if res:
-                        break
-            print(ref_dict)
-            if len(ref_dict) == len(ref_fields):
-                break
-            first_line += 1
-
-
-        if first_line > len(row) - 1:
-            print("Invalid CSV Formatting, could not find all the required headers")
-            exit(1)
 
         blank_parts = []
         extra_rows = {}
@@ -869,6 +902,8 @@ def main():
         if args.replace:
             #
             print("Found mpns with generics")
+
+
 
 
         if len(assembly_dict):
