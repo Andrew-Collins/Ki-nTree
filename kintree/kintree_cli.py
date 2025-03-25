@@ -189,17 +189,21 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     print("Category cannot be blank when creating new part")
                     return None
                 part_info['category_tree'] = category
-                # Create new part
-                _new_part, part_pk, part_info = inventree_interface.inventree_create(
-                    part_info=part_info,
-                    kicad=False,
-                    symbol=None,
-                    footprint=None,
-                    show_progress=False,
-                    is_custom=False,
-                    stock=None,
-                )
-            break
+                try:
+                    # Create new part
+                    _new_part, part_pk, part_info = inventree_interface.inventree_create(
+                        part_info=part_info,
+                        kicad=False,
+                        symbol=None,
+                        footprint=None,
+                        show_progress=False,
+                        is_custom=False,
+                        stock=None,
+                    )
+                except Exception as e: 
+                    print("Failed new")
+                    delete_failed_parts()
+                    continue
         except Exception as e:
             print("create_part error: ", e)
             continue
