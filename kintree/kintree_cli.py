@@ -11,10 +11,11 @@ import sys
 import csv
 import shutil
 
-smt_sizes = ['0201', '0402', '0603', '0805','1206','1210', '1812', '2010', '2512']
+DEFAULT_FAB = 'JLCPCB'
 
+SMT_SIZES = ['0201', '0402', '0603', '0805','1206','1210', '1812', '2010', '2512']
 
-search_fields_list = [
+SEARCH_FIELDS_LIST = [
     'name',
     'description',
     'revision',
@@ -28,11 +29,11 @@ search_fields_list = [
     'image',
 ]
 
-usual_suppliers = ["Digi-Key", "Mouser", "Element14"]
+USUAL_SUPP = ["Digi-Key", "Mouser", "Element14"]
 
-rename_supppliers = {"Digi-Key": "DigiKey"}
+RENAME_SUPP = {"Digi-Key": "DigiKey"}
 
-ref_to_category = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'] }
+REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'] }
 
 def cap_generic(s: str, params = None) -> str:
     cap_units = ['p','n','u','m','']
@@ -52,7 +53,7 @@ def cap_generic(s: str, params = None) -> str:
         unit = cap_units[cap_units.index(unit) + 1]
 
     foot = ''
-    for size in smt_sizes:
+    for size in SMT_SIZES:
         if size in s:
             foot = size
             break
@@ -126,7 +127,7 @@ def res_generic(s: str, params = None) -> str:
 
 
     foot = ''
-    for size in smt_sizes:
+    for size in SMT_SIZES:
         if size in s:
             foot = size
             break
@@ -232,7 +233,7 @@ def is_template(ref: str, mpn: str) -> tuple[bool, str]:
 def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     ipn = assembly['ipn']
     search_form = {}
-    for field in search_fields_list:
+    for field in SEARCH_FIELDS_LIST:
         search_form[field] = ''
     search_form['name'] = assembly.get('name', ipn)
     desc = assembly.get('desc', '')
@@ -241,6 +242,8 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     search_form['revision'] = assembly['rev']
     search_form['manufacturer_name'] = 'Micromelon'
     search_form['manufacturer_part_number'] = ipn
+    search_form['supplier_name'] = assembly['supp']
+    search_form['supplier_part_number'] = assembly['spn']
     images = assembly.get('image', [])
     if len(images) > 1:
         search_form['image'] = images[1]
@@ -311,7 +314,7 @@ def run_search(supplier, pn, manf = ''):
     print(part_supplier_info)
 
     search_form = {}
-    for field in search_fields_list:
+    for field in SEARCH_FIELDS_LIST:
         search_form[field] = ''
 
     if part_supplier_info:
@@ -354,7 +357,7 @@ def find_generic(ref_prefix, search_form, raw_form, category, create = False):
         confirm = input("")
         if not(len(confirm)) or confirm.upper() == 'Y':
             search_form = {}
-            for field in search_fields_list:
+            for field in SEARCH_FIELDS_LIST:
                 search_form[field] = ''
             search_form['name'] = generic
             search_form['manufacturer_part_number'] = generic
@@ -378,7 +381,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
 
         (template_flag, ref_prefix) = is_template(ref, mpn)
 
-        category = ref_to_category.get(ref_prefix)
+        category = REF_TO_CATEGORY.get(ref_prefix)
         if category is None:
             print("Unknown reference prefix: ", ref_prefix)
             continue
@@ -408,12 +411,15 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             # Create Bare PCB part
             elif not dry and 'a' not in mpn.lower():
                 search_form = {}
-                for field in search_fields_list:
+                for field in SEARCH_FIELDS_LIST:
                     search_form[field] = ''
                 search_form['name'] = mpn
                 search_form['manufacturer_name'] = manf
                 search_form['manufacturer_part_number'] = mpn
                 search_form['revision'] = rev
+                # Default PCB manufacturer
+                search_form['supplier_name'] = DEFAULT_FAB
+                search_form['supplier_part_number'] = mpn
                 if len(curr_part.get('image', '')):
                     search_form['image'] = curr_part['image']
                 if len(curr_part.get('desc', '')):
@@ -427,7 +433,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
         # Template part
         if not dry and template_flag:
             search_form = {}
-            for field in search_fields_list:
+            for field in SEARCH_FIELDS_LIST:
                 search_form[field] = ''
             search_form['name'] = mpn
             search_form['manufacturer_part_number'] = mpn
@@ -462,7 +468,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             local_res = True
         
         generic_id = None
-        for supp in usual_suppliers:
+        for supp in USUAL_SUPP:
             (search_form, raw_form) = run_search(supp, mpn, manf)
             if len(search_form['name']) < 1:
                 continue
@@ -654,10 +660,10 @@ def main():
 
     if args.interactive:
         while 1:
-            print("Valid Types: ", list(ref_to_category.keys()))
+            print("Valid Types: ", list(REF_TO_CATEGORY.keys()))
             ref = (get_input("Type") or '').upper()
-            if not len(ref) or ref not in ref_to_category.keys():
-                print("Invalid type, valid types are: ", list(ref_to_category.keys()))
+            if not len(ref) or ref not in REF_TO_CATEGORY.keys():
+                print("Invalid type, valid types are: ", list(REF_TO_CATEGORY.keys()))
                 continue
             manf = get_input("Manf")
             if manf is None:
@@ -920,10 +926,11 @@ def main():
         desc = assembly_dict.get('desc', '')
         if len(desc):
             desc = 'PCB ' + desc
-        # IPN of board is one char less than the assembly IPN
-        # Match revision to assembly
-        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
-    res = search_and_create(part_list, args.dry, args.variants)
+        if assembly_dict.get('pcb', False):
+            # IPN of board is one char less than the assembly IPN
+            # Match revision to assembly
+            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
+        res = search_and_create(part_list, args.dry, args.variants)
     possible_generics = []
     for part in res:
         if type(part) is tuple:
@@ -944,6 +951,8 @@ def main():
         for board, board_list in extra_assemblies.items():
             assembly_dict['ipn'] = board
             assembly_dict['name'] = board
+            assembly_dict['supp'] = ''
+            assembly_dict['spn'] = ''
             assembly_dict['desc'] = ''
             assembly_dict['image'] = []
             assembly_dict['attachments'] = []
