@@ -496,8 +496,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
 
     return result
 
-
-
+# NOTE: this does not work on windows
 import sys,tty,os,termios
 def getkey():
     old_settings = termios.tcgetattr(sys.stdin)
@@ -517,14 +516,11 @@ def getkey():
                 9: 'tab',
                 27: 'esc',
                 22: 'paste',
-                # 65: 'up',
-                # 66: 'down',
-                # 67: 'right',
-                # 68: 'left'
             }
             return key_mapping.get(k, chr(k))
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
 
 def get_input(name: str) -> str | None:
     print(name + ": ", end='', flush=True)
@@ -532,8 +528,6 @@ def get_input(name: str) -> str | None:
     paste_mode=True
     while 1:
         if paste_mode: 
-            # print("")
-            # out = input("<Paste Mode>: ")
             out = input("")
             break
 
@@ -572,20 +566,23 @@ def init_argparse() -> argparse.ArgumentParser:
         action='store_true',
         help="Run in interactive mode"
     )
-    parser.add_argument(
-        "-r", "--replace", required=False,
-        action='store_true',
-        help="Replace parts with generics"
-    )
-    parser.add_argument(
-        "-c", "--check", required=False,
-        action='store_true',
-        help="Check if parts exist"
-    )
+    # parser.add_argument(
+    #     "-r", "--replace", required=False,
+    #     action='store_true',
+    #     help="Replace parts with generics"
+    # )
+    # parser.add_argument(
+    #     "-c", "--check", required=False,
+    #     action='store_true',
+    #     help="Check if parts exist"
+    # )
     parser.add_argument(
         "-a", "--assembly", required=False,
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
     )
+    parser.add_argument("-b", "--bom",
+                        required= False,
+                        help="Path to CSV file, or a CSV string (';' delimited)")
     parser.add_argument(
          "--dry", required=False,
         action='store_true',
@@ -602,24 +599,271 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("--variants",
                         required= False,
                         help="Create template parts and link to variants (always on in interactive mode)")
-    parser.add_argument("-p", "--path",
-                        required= False,
-                        help="Path to a CSV file, ';' delimited")
-    parser.add_argument("-s", "--string",
-                        required= False,
-                        help="CSV string, ';' delimited")
 
     return parser
 
-def main():
-# if __name__ == "__main__":
-    # create_assembly("999999A", [{'mpn': "ERA-6AEB49R9V", 'refs': "R1", 'qty': 1}], overwrite=False)
-    # search_and_create([{'refs': "J1", 'manf': "Sullins",'mpn': "LPPB121NFFN-RC"}], variants=True)
-    # exit(0)
+def stringify_list_dict(obj):
+    # Make sure fields are stringified
+    obj = re.sub("\[[\s\t]*\[", "[[", obj)
+    obj = re.sub("\][\s\t]*\]", "]]", obj)
+    obj = re.sub("([^\]]),", "\g<1>', '", obj)
+    obj = re.sub("([^\]]): ", "\g<1>': ", obj)
+    obj = re.sub("([^\]])\]", "\g<1>']", obj)
+    obj = re.sub("\[([^\[])", "['\g<1>", obj)
+    # Only the opening dict bracket needs to be quoted
+    obj = re.sub("{", "{'", obj)
+    # Enclose all in square brackets if not dict or already an overall list
+    if not obj.startswith("[["):
+        obj = "[" + obj + "]"
+    return obj
 
+
+def unique_item(manf, mpn, rev):
+    return manf + "_" + mpn + "_" + rev
+
+class Assembly:
+    def __init__(self, ipn):
+        self.ipn = ipn
+        self.blanks = []
+        self.sub_assemblies = {}
+        self.parts = {}
+        self.csv = None
+        self.headers = {}
+        self.header_row = 0
+        
+    def add_combine_parts(self, part):
+        unique_item = unique_item(part['manf'], part['mpn'], part['rev'])
+        # Get existing (or default to part)
+        updated = self.parts.get(unique_item, part)
+        # Update existing
+        if updated != part:
+            # Combine refs
+            updated['refs'] += ' ' + part['ref']
+            # Combine qty
+            updated['qty'] += part['qty']
+        # Updated parts dict
+        self.parts[unique_item] = updated
+
+    def process_conn(self, ref, apn, conn_manf, conn_mpn):
+        # conn_mpn defaults to 'apn.csv'
+        if not len(conn_mpn):
+            conn_mpn = apn + '.csv' 
+
+        if conn_manf == 'sub':
+            sub = Assembly(apn)
+            sub.csv_parse(conn_mpn)
+            # TODO basic check of subassembly
+            self.sub_assemblies[apn] = sub
+
+        elif conn_manf == 'bom':
+            # if conn_mpn is entered, conn_manf must be too
+            if not conn_mpn.startswith('['):
+                print("Invalid conn_mpn: ", conn_mpn)
+                return
+            conn_mpn = stringify_list_dict(conn_mpn)
+            conn_bom = eval(conn_mpn)
+            bom_type = type(conn_bom)
+
+            if bom_type != list:
+                print("Invalid conn_mpn field: ", conn_mpn)
+                return
+
+            for j in range(0, len(conn_bom)):
+                for i in range(0, len(conn_bom[j])):
+                    conn_bom[j][i] = conn_bom[j][i].lstrip()
+
+                [refc, manf, mpn, qty] = conn_bom[j]
+                # Create part, ref must be made unique buy appending the ref for the owning part
+                part = {'refs': refc + ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': ''}
+                self.add_combine_parts(part)
+
+    def csv_parse(self, csv_str):
+        if os.path.exists(csv_str):
+            with open(csv_str, 'r') as file:
+                csv_str = file.read()
+        print("CSV str: ", csv_str)
+        # Remove any windows line endings
+        csv_str = csv_str.replace('\r', '')
+        # Split into lines
+        csv_str = csv_str.split('\n')
+        self.csv = csv.reader(csv_str, delimiter=';')
+
+        ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn']
+        for row in self.csv: 
+            self.headers = {}
+            for item in row:
+                print("Item: ", item)
+                i = row.index(item)
+                for field in ref_fields:
+                    keys = field
+                    if type(field) == str:
+                        keys = [field]
+                    res = False
+                    for k in keys:
+                        if k == item.lower():
+                            self.headers[keys[0]] = i
+                            res = True
+                            break
+                    if res:
+                        break
+            print(self.headers)
+            # The 'supp' and 'spn' are optional
+            if self.headers.keys() == ref_fields[:-2]:
+                break
+            self.header_row += 1
+
+        if self.header_row > len(row) - 1:
+            print("Invalid CSV Formatting, could not find all the required headers")
+            return
+
+        max_len = max(*self.headers.values()) + 1
+        for row in list(self.csv)[self.header_row:]: 
+            if len(row) < max_len:
+                continue
+            conn_mpn = row[self.headers['conn_mpn']].lstrip()
+            conn_manf = row[self.headers.get('conn_manf', '')].lstrip()
+            ref = row[self.headers['refs']]
+            mpn = row[self.headers['mpn']]
+
+            self.process_conn(ref, mpn, conn_manf, conn_mpn)
+
+
+            qty = row[self.headers['qty']]
+            if not len(ref) and len(qty):
+                continue
+            elif not len(mpn):
+                self.blanks.append(ref)
+                continue
+
+            part = {'refs': ref, 'manf': row[self.headers['manf']], 'mpn': mpn, 'qty': int(qty), 'rev':  row[self.headers['rev']]}
+            # New entry or append to existing
+            self.add_combine_parts(part)
+
+
+    def create(self, dry, variants) -> list: 
+        res = []
+        for sub in self.sub_assemblies:
+            res += sub.create(dry, variants)
+        res += search_and_create(list(self.parts.values), dry, variants)
+
+        return res
+
+
+    def check(self) -> bool:
+        # this could be conglomerated, but it just costs some time
+        for sub in self.sub_assemblies.values:
+            sub.check()
+
+        inventree_interface.connect_to_server()
+        res = True
+        for row in list(self.csv)[self.header_row:]: 
+            mpn = row[self.headers['mpn']].lstrip()
+            rev = row[self.headers['rev']].lstrip()
+            local_res = find_part(mpn, rev) is None
+            print("Res: ", local_res)
+            if local_res:
+                print("Unable to find part: ", mpn, " ", rev)
+            res &= not local_res
+        return res
+
+
+    def assembly(self, assembly_dict) -> bool:
+        return create_assembly(assembly_dict, list(self.parts.values))
+
+    def parse(self, csv_str, assembly_dict, dry, variants) -> dict | None:
+        self.csv_parse(csv_str)
+
+        # Create all bom parts (including those in sub assemblies)
+        res = self.create(dry, variants)
+
+        # if args.replace:
+        #     #
+        #     print("Found mpns with generics")
+
+        possible_generics = []
+        for part in res:
+            if type(part) is tuple:
+                possible_generics.append(part)
+
+        for part in possible_generics:
+            res.remove(part)
+            print(part[0], " could be replaced by: ", part[1])
+
+        if len(res):
+            print("Parts could not be added: ", res)
+
+        if len(self.blanks):
+            print("Parts have no mpn: ", self.blanks)
+
+        res = not len(res) and not len(self.blanks)
+
+        if assembly_dict is None:
+            return res
+
+        # Remove 'V' from rev
+        rev = assembly_dict['rev'].replace('V','').replace('v','')
+        assembly_dict['rev'] = rev
+
+        # Parse attachments
+        attachments = assembly_dict.get('attachments', [])
+        if len(attachments):
+            attachments = attachments[0]
+
+        # Parse images
+        images = assembly_dict.get('image', [])
+        pcb_image = ''
+        if len(images):
+            pcb_image = images[0]
+
+        # Parse description
+        desc = assembly_dict.get('desc', '')
+        if len(desc):
+            desc = 'PCB ' + desc
+
+        # Add the bare board if the assembly is PCBA
+        if assembly_dict.get('pcb', False):
+            # IPN of board is one char less than the assembly IPN
+            # Match revision to assembly
+            board_ipn = assembly_dict['ipn'][:-1]
+            self.parts[board_ipn] = {'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': board_ipn, 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments}
+
+
+        # Only create assembly if no errors, not a dry run
+        # and assembly dict is specified
+        if dry or not res or not len(assembly_dict):
+            return None 
+
+        for sub in self.sub_assemblies:
+            # Find the supplier and spn from the top level assembly
+            supp = ''
+            spn = ''
+            for row in self.csv[self.firstline:]:
+                if row[self.headers['mpn']] != sub.ipn:
+                    continue
+                supp = row[self.headers['supp']]
+                spn = row[self.headers['spn']]
+                break;
+
+            # spn => ipn if supp is specified
+            if len(supp) and not len(spn):
+                spn = sub.ipn
+
+            # Assemble dict for the sub assembly
+            sub_dict = {'ipn': sub.ipn, 'name': sub.ipn, 'supp': supp, 'spn': spn, 'desc': ''} 
+            # Create parts for the sub assemblies
+            res &= sub.assembly(sub_dict)
+        res &= create_assembly(assembly_dict, self.parts)
+        if not res:
+            return None
+        return assembly_dict
+
+
+
+def main():
     parser = init_argparse()
     args = parser.parse_args()
 
+    # Collect settings
     if args.settings:
         settings.CONFIG_DIGIKEY_API = args.settings
         settings.CONFIG_MOUSER_API = args.settings
@@ -630,6 +874,7 @@ def main():
         settings.load_ipn_settings()
         settings.load_inventree_settings()
 
+    # Digikey token can be manually provided
     if args.digi_token:
         settings.DIGIKEY_STORAGE_PATH = "/tmp"
         os.environ['DIGIKEY_STORAGE_PATH'] = settings.DIGIKEY_STORAGE_PATH
@@ -642,22 +887,7 @@ def main():
     # The cli checks itself, disable the later checks
     settings.CHECK_EXISTING = False
 
-    # settings_file = [
-    #     global_settings.INVENTREE_CONFIG,
-    #     global_settings.CONFIG_IPN_PATH,
-    # ]
-    #
-    # if args.settings_inv:
-    #     settings_file[0] = args.settings_inv
-    # if args.settings_ipn:
-    #     settings_file[1] = args.settings_ipn
-    #
-    # settings = {
-    #     **config_interface.load_inventree_user_settings(settings_file[0]),
-    #     **config_interface.load_file(settings_file[1]),
-    # }
-    # load_cache_settings()
-
+    # Interactive mode
     if args.interactive:
         while 1:
             print("Valid Types: ", list(REF_TO_CATEGORY.keys()))
@@ -683,278 +913,22 @@ def main():
             print("--------------------------------")
         return;
 
-    csv_str = args.string
-    print("Path: ", args.path)
-    if not(args.path is None) and os.path.exists(args.path):
-        with open(args.path, 'r') as file:
-            csv_str = file.read()
-    print("CSV str: ", csv_str)
-    # Remove any windows line endings
-    csv_str = csv_str.replace('\r', '')
-    # Split into lines
-    csv_str = csv_str.split('\n')
-    r = csv.reader(csv_str, delimiter=';')
 
-    ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf']
-    ref_dict = {}
-    first_line = 0
-    for row in r: 
-        ref_dict = {}
-        for item in row:
-            print("Item: ", item)
-            i = row.index(item)
-            for field in ref_fields:
-                keys = field
-                if type(field) == str:
-                    keys = [field]
-                res = False
-                for k in keys:
-                    if k == item.lower():
-                        ref_dict[keys[0]] = i
-                        res = True
-                        break
-                if res:
-                    break
-        print(ref_dict)
-        if len(ref_dict) == len(ref_fields):
-            break
-        first_line += 1
+    # Only progress if bom provided
+    if not len(args.bom):
+        return;
 
-
-    if first_line > len(row) - 1:
-        print("Invalid CSV Formatting, could not find all the required headers")
-        exit(1)
-
-    if args.check:
-        print("Check")
-        inventree_interface.connect_to_server()
-        res = True
-        print("First line: ", first_line)
-        for row in list(r)[first_line:]: 
-            mpn = row[ref_dict['mpn']].lstrip()
-            rev = row[ref_dict['rev']].lstrip()
-            local_res = find_part(mpn, rev) is None
-            print("Res: ", local_res)
-            if local_res:
-                print("Unable to find part: ", mpn, " ", rev)
-            res &= not local_res
-        exit(not res)
-
-
+    # Parse assembly_dict
     assembly_dict = {}
-    board_ipn = ''
     if args.assembly:
         assembly_dict = eval(args.assembly)
-        board_ipn = assembly_dict['ipn']
 
+    if not len(assembly_dict):
+        return
+    
 
-    blank_parts = []
-    extra_rows = {}
-    extra_assemblies = {}
-    unique_parts = {}
-    part_list = []
-    part_list_dict = []
-    max_len = max(*ref_dict.values()) + 1
-    for row in list(r)[first_line:]: 
-        if len(row) < max_len:
-            continue
-        conn_mpn = row[ref_dict['conn_mpn']].lstrip()
-        conn_manf = row[ref_dict.get('conn_manf', '')].lstrip()
-        ref = row[ref_dict['refs']]
-        # if conn_mpn is entered, conn_manf must be too
-        if len(conn_mpn):
-            if not (conn_mpn.startswith('[') or conn_mpn.startswith('{')):
-                print("Invalid conn_mpn: ", conn_mpn)
-                # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
-            else:
-                # Make sure fields are stringified
-                conn_mpn = re.sub("\[[\s\t]*\[", "[[", conn_mpn)
-                conn_mpn = re.sub("\][\s\t]*\]", "]]", conn_mpn)
-                conn_mpn = re.sub("([^\]]),", "\g<1>', '", conn_mpn)
-                conn_mpn = re.sub("([^\]]): ", "\g<1>': ", conn_mpn)
-                conn_mpn = re.sub("([^\]])\]", "\g<1>']", conn_mpn)
-                conn_mpn = re.sub("\[([^\[])", "['\g<1>", conn_mpn)
-                # Only the opening dict bracket needs to be quoted
-                conn_mpn = re.sub("{", "{'", conn_mpn)
-                # Enclose all in square brackets if not dict or already an overall list
-                if not (conn_mpn.startswith('{') or conn_mpn.startswith("[[")):
-                    conn_mpn = "[" + conn_mpn + "]"
-                conn_bom = eval(conn_mpn)
-                bom_type = type(conn_bom)
-                if bom_type not in [list, dict]:
-                    print("Invalid conn_mpn field: ", conn_mpn)
+    # Parse provided list of parts and create assembly if assembly_dict specified
+    assembly = Assembly(assembly_dict.get('ipn', ''))
+    res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
-                print("type: ", bom_type)
-                if bom_type == dict:
-                    for k,v in conn_bom.items():
-                        for j in range(0, len(v)):
-                            for i in range(0, len(v[j])):
-                                v[j][i] = v[j][i].lstrip()
-                        if k not in extra_rows.keys():
-                            extra_rows[k] = {}
-                        extra_rows[k][ref] = v
-                else:
-                    for j in range(0, len(conn_bom)):
-                        for i in range(0, len(conn_bom[j])):
-                            conn_bom[j][i] = conn_bom[j][i].lstrip()
-                    if board_ipn not in extra_rows.keys():
-                        extra_rows[board_ipn] = {}
-                    extra_rows[board_ipn][ref] = conn_bom
-
-        mpn = row[ref_dict['mpn']]
-        manf = row[ref_dict['manf']]
-        qty = row[ref_dict['qty']]
-        rev = row[ref_dict['rev']]
-
-        valid_flag = len(ref) and len(qty)
-        if not valid_flag:
-            continue
-        elif not len(mpn):
-            blank_parts.append(ref)
-            continue
-
-        qty = int(qty)
-        part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': qty, 'rev': rev}
-        # New entry or append to existing
-        unique_item = manf + "_" + mpn + "_" + rev
-        # Combine and update
-        if unique_item in unique_parts:
-            updated = copy.deepcopy(unique_parts[unique_item])
-            # Combine refs
-            updated['refs'] += ' ' + ref
-            # Combine qty
-            updated['qty'] += qty
-            # Replace part_list entry with updated entry
-            part_list[part_list.index(unique_parts[unique_item])] = updated
-            # Replace unique_parts entry with updated entry
-            unique_parts[unique_item] = updated
-        # New
-        else:
-            unique_parts[unique_item] = part
-            part_list.append(part)
-
-    # Go through extra_rows and merge
-    # [ref, manf, mpn, qty]
-    for (board, d) in extra_rows.items():
-        for (parent, bom) in d.items():
-            # Split the ref into individual numbers
-            par_r = re.search("([A-Z]+)\d", parent).groups()[0]
-            par_i = []
-            par_ranges = re.findall(par_r + "\d", parent)
-            for rang in par_ranges:
-                item = rang.replace(par_r, "")
-                sp = item.split('-')
-                start = int(sp[0])
-                fin = start + 1
-                # If there is a '-', then the trailing number is the end
-                if len(sp) > 1:
-                    fin = int(fin) + 1
-
-                # append all in the range (x1000)
-                for i in range(start, fin):
-                    # par_i.append(i*1000)
-                    par_i.append(i)
-
-            for entry in bom:
-                [ref, manf, mpn, qty] = entry[:4]
-                qty = int(qty)
-                rev = ''
-                # rev is optional
-                if len(entry) > 4:
-                    rev = entry[4]
-                # No need to sort into indiv items, as the formatting can stay the same
-                # The numbers have to be unique within each ref
-                qty_total = len(par_i)*qty
-                ref_inds = []
-                ref_total = ""
-                for par_n in par_i:
-                    # def ref_mult(matchobj):
-                    #     n = int(matchobj.group(0))
-                    #     return str(par_n + n)
-                    # ref_total += re.sub("\d+", ref_mult, ref) + " "
-
-                    for sub_ref in re.split(",| |\|", ref):
-                        ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
-                ref_total = ref_total[:-1]
-
-                part = {'refs': ref_total, 'manf': manf, 'mpn': mpn, 'qty': qty_total, 'rev': rev}
-
-                # Check for matches in part_list
-                unique_item = manf + "_" + mpn + "_" + rev
-
-                if board == board_ipn:
-                    # Combine and update
-                    if unique_item in unique_parts:
-                        updated = copy.deepcopy(unique_parts[unique_item])
-                        # Combine refs
-                        updated['refs'] += ' ' + ref
-                        # Combine qty
-                        updated['qty'] += qty
-                        # Replace part_list entry with updated entry
-                        part_list[part_list.index(unique_parts[unique_item])] = updated
-                        # Replace unique_parts entry with updated entry
-                        unique_parts[unique_item] = updated
-                    # New
-                    else:
-                        unique_parts[unique_item] = part
-                        part_list.append(part)
-                else:
-                    if board not in extra_assemblies.keys():
-                        extra_assemblies[board] = []
-                    part['refs'] += ":" + board_ipn 
-                    extra_assemblies[board].append(part)
-
-
-    print("List: ", part_list)
-    print("Extra assemblies: ", extra_assemblies)
-
-    if args.replace:
-        #
-        print("Found mpns with generics")
-
-    if len(assembly_dict):
-        rev = assembly_dict['rev'].replace('V','')
-        rev = rev.replace('v','')
-        assembly_dict['rev'] = rev
-        images = assembly_dict.get('image', [])
-        attachments = assembly_dict.get('attachments', [])
-        pcb_image = ''
-        if len(images):
-            pcb_image = images[0]
-        if len(attachments):
-            attachments = attachments[0]
-        desc = assembly_dict.get('desc', '')
-        if len(desc):
-            desc = 'PCB ' + desc
-        if assembly_dict.get('pcb', False):
-            # IPN of board is one char less than the assembly IPN
-            # Match revision to assembly
-            part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
-        res = search_and_create(part_list, args.dry, args.variants)
-    possible_generics = []
-    for part in res:
-        if type(part) is tuple:
-            possible_generics.append(part)
-
-    for part in possible_generics:
-        res.remove(part)
-        print(part[0], " could be replaced by: ", part[1])
-
-    if len(res):
-        print("Parts could not be added: ", res)
-    if len(blank_parts):
-        print("Parts have no mpn: ", blank_parts)
-
-    res = not len(res) and not len(blank_parts)
-    if not args.dry and res and args.assembly:
-        res &= create_assembly(assembly_dict, part_list)
-        for board, board_list in extra_assemblies.items():
-            assembly_dict['ipn'] = board
-            assembly_dict['name'] = board
-            assembly_dict['supp'] = ''
-            assembly_dict['spn'] = ''
-            assembly_dict['desc'] = ''
-            assembly_dict['image'] = []
-            assembly_dict['attachments'] = []
-            res &= create_assembly(assembly_dict, board_list)
-    exit(not res)
+    exit(res)
