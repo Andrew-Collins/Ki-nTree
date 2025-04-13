@@ -630,19 +630,20 @@ class Assembly:
         self.csv = None
         self.headers = {}
         self.header_row = 0
+        self.parent_path = []
         
     def add_combine_parts(self, part):
-        unique_item = unique_item(part['manf'], part['mpn'], part['rev'])
+        curr = unique_item(part['manf'], part['mpn'], part['rev'])
         # Get existing (or default to part)
-        updated = self.parts.get(unique_item, part)
+        updated = self.parts.get(curr, part)
         # Update existing
         if updated != part:
             # Combine refs
-            updated['refs'] += ' ' + part['ref']
+            updated['refs'] += ' ' + part['refs']
             # Combine qty
             updated['qty'] += part['qty']
         # Updated parts dict
-        self.parts[unique_item] = updated
+        self.parts[curr] = updated
 
     def process_conn(self, ref, apn, conn_manf, conn_mpn):
         # conn_mpn defaults to 'apn.csv'
@@ -651,10 +652,9 @@ class Assembly:
 
         if conn_manf == 'sub':
             sub = Assembly(apn)
-            sub.csv_parse(conn_mpn)
+            sub.csv_parse(conn_mpn, )
             # TODO basic check of subassembly
             self.sub_assemblies[apn] = sub
-
         elif conn_manf == 'bom':
             # if conn_mpn is entered, conn_manf must be too
             if not conn_mpn.startswith('['):
@@ -677,8 +677,8 @@ class Assembly:
                 part = {'refs': refc + ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': ''}
                 self.add_combine_parts(part)
 
-    def csv_parse(self, csv_str):
-        if os.path.exists(csv_str):
+    def csv_parse(self, csv_str, path_prefix=''):
+        if os.path.exists(path_prefix, csv_str):
             with open(csv_str, 'r') as file:
                 csv_str = file.read()
         print("CSV str: ", csv_str)
@@ -688,13 +688,15 @@ class Assembly:
         csv_str = csv_str.split('\n')
         self.csv = csv.reader(csv_str, delimiter=';')
 
-        ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn']
+        REF_FIELDS = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn']
+        PASS_MASK = (1 << (len(REF_FIELDS) - 2)) - 1;
         for row in self.csv: 
+            mask = 0
             self.headers = {}
             for item in row:
                 print("Item: ", item)
                 i = row.index(item)
-                for field in ref_fields:
+                for j, field in enumerate(REF_FIELDS):
                     keys = field
                     if type(field) == str:
                         keys = [field]
@@ -702,13 +704,13 @@ class Assembly:
                     for k in keys:
                         if k == item.lower():
                             self.headers[keys[0]] = i
+                            mask |= 1 << j
                             res = True
                             break
                     if res:
                         break
-            print(self.headers)
             # The 'supp' and 'spn' are optional
-            if self.headers.keys() == ref_fields[:-2]:
+            if mask & PASS_MASK == PASS_MASK:
                 break
             self.header_row += 1
 
@@ -742,16 +744,17 @@ class Assembly:
 
     def create(self, dry, variants) -> list: 
         res = []
-        for sub in self.sub_assemblies:
+        for sub in self.sub_assemblies.values():
             res += sub.create(dry, variants)
-        res += search_and_create(list(self.parts.values), dry, variants)
+        print("Parts:", self.parts)
+        res += search_and_create(list(self.parts.values()), dry, variants)
 
         return res
 
 
     def check(self) -> bool:
         # this could be conglomerated, but it just costs some time
-        for sub in self.sub_assemblies.values:
+        for sub in self.sub_assemblies.values():
             sub.check()
 
         inventree_interface.connect_to_server()
@@ -772,6 +775,8 @@ class Assembly:
 
     def parse(self, csv_str, assembly_dict, dry, variants) -> dict | None:
         self.csv_parse(csv_str)
+
+        print(csv_str)
 
         # Create all bom parts (including those in sub assemblies)
         res = self.create(dry, variants)
@@ -833,7 +838,7 @@ class Assembly:
         if dry or not res or not len(assembly_dict):
             return None 
 
-        for sub in self.sub_assemblies:
+        for sub in self.sub_assemblies.values():
             # Find the supplier and spn from the top level assembly
             supp = ''
             spn = ''
@@ -923,9 +928,6 @@ def main():
     if args.assembly:
         assembly_dict = eval(args.assembly)
 
-    if not len(assembly_dict):
-        return
-    
 
     # Parse provided list of parts and create assembly if assembly_dict specified
     assembly = Assembly(assembly_dict.get('ipn', ''))
