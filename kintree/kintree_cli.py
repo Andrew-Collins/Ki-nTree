@@ -203,6 +203,10 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     print("Category cannot be blank when creating new part")
                     return None
                 part_info['category_tree'] = category
+
+                if assembly:
+                    print("Int Supp", part_info['supplier_name'], part_info['supplier_part_number'])
+
                 try:
                     # Create new part
                     _new_part, part_pk, part_info = inventree_interface.inventree_create(
@@ -215,7 +219,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                         stock=None,
                     )
                 except Exception as e: 
-                    print("Failed new")
+                    print("Failed new: ", e)
                     delete_failed_parts()
                     continue
         except Exception as e:
@@ -232,6 +236,7 @@ def is_template(ref: str, mpn: str) -> tuple[bool, str]:
 # bom parts must have: 'mpn','refs','qty' fields
 def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     ipn = assembly['ipn']
+    manf = assembly.get('manf', '')
     search_form = {}
     for field in SEARCH_FIELDS_LIST:
         search_form[field] = ''
@@ -239,11 +244,11 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     desc = assembly.get('desc', '')
     if len(desc):
         search_form['description'] = 'PCB Assembly ' + desc
-    search_form['revision'] = assembly['rev']
-    search_form['manufacturer_name'] = 'Micromelon'
+    search_form['revision'] = assembly.get('rev', '')
+    search_form['manufacturer_name'] = manf
     search_form['manufacturer_part_number'] = ipn
-    search_form['supplier_name'] = assembly['supp']
-    search_form['supplier_part_number'] = assembly['spn']
+    search_form['supplier_name'] = assembly.get('supp', '')
+    search_form['supplier_part_number'] = assembly.get('spn', '')
     images = assembly.get('image', [])
     if len(images) > 1:
         search_form['image'] = images[1]
@@ -256,7 +261,7 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
 
     inventree_interface.connect_to_server()
 
-    pk  = create_part(search_form, category = ["Assembled PCBs"], assembly=True)
+    pk  = create_part(search_form, category = ["Assembled PCBs"], assembly=True, trackable=('pcb' in assembly.keys()))
 
     if pk and len(attachments):
         for attachment in attachments:
@@ -271,7 +276,7 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
         (template_flag, _ref_prefix) = is_template(part['refs'], part['mpn'])
         if 'micromelon' in part['manf'].lower():
             # Must have a valid revision
-            if not len(part['rev']):
+            if not len(part.get('rev', '')):
                 part['rev'] = assembly['rev']
 
         # Search for the IPN
@@ -386,52 +391,60 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             print("Unknown reference prefix: ", ref_prefix)
             continue
 
+        # Get part if it exists
+        search_term = mpn
+        part = None
+        bom_flag = False
+        print("Search Term:", mpn, rev)
+        for _retry in range(0,3):
+            try:
+                part = inventree_api.get_part_from_ipn(search_term, rev)
+            except:
+                continue
+            break
 
-        # Do not create internal parts here
-        # They will all be assemblies that should be created
-        # separately
-        if 'micromelon' in manf.lower():
+        # Account for revision mismatch
+        if part and part.revision != rev:
+            part = None
+
+        if part is not None:
+            bom_items = part.getBomItems()
+            bom_flag = len(bom_items) > 0
+            print("Bom flag: ", bom_flag, bom_items)
+            print("Found existing part: ", mpn, "/", rev)
+
+        # Bom parts do not get updated here
+        if bom_flag:
+            result.append(mpn)
+            continue
+        # Special case for PCBs
+        elif 'micromelon' in manf.lower() and mpn.lower()[-1] != 'a' and re.search(r"\d{6}", mpn) is not None:
             # Must have a valid revision
             if not len(rev):
                 print("No revision found for internal part")
                 continue
-
-            part = None
-            for _retry in range(0,3):
-                try:
-                    part = inventree_api.get_part_from_ipn(search_term, rev)
-                except:
-                    continue
-                break
-            if part is not None:
-                print("Found existing part/rev: ", mpn, "/", rev)
-                result.append(mpn)
-                continue
                 
-            # Create Bare PCB part
-            elif not dry and 'a' not in mpn.lower():
-                search_form = {}
-                for field in SEARCH_FIELDS_LIST:
-                    search_form[field] = ''
-                search_form['name'] = mpn
-                search_form['manufacturer_name'] = manf
-                search_form['manufacturer_part_number'] = mpn
-                search_form['revision'] = rev
-                # Default PCB manufacturer
-                search_form['supplier_name'] = DEFAULT_FAB
-                search_form['supplier_part_number'] = mpn
-                if len(curr_part.get('image', '')):
-                    search_form['image'] = curr_part['image']
-                if len(curr_part.get('desc', '')):
-                    search_form['description'] = curr_part['desc']
-                part_pk = create_part(search_form, category, trackable=True)
-                if part_pk and len(curr_part.get('attachments', '')):
-                    for attachment in curr_part['attachments']:
-                        inventree_api.upload_part_attachment(attachment, part_pk)
+            search_form = {}
+            for field in SEARCH_FIELDS_LIST:
+                search_form[field] = ''
+            search_form['name'] = mpn
+            search_form['manufacturer_name'] = manf
+            search_form['manufacturer_part_number'] = mpn
+            search_form['revision'] = rev
+            # Default PCB manufacturer
+            search_form['supplier_name'] = DEFAULT_FAB
+            search_form['supplier_part_number'] = mpn
+            if len(curr_part.get('image', '')):
+                search_form['image'] = curr_part['image']
+            if len(curr_part.get('desc', '')):
+                search_form['description'] = curr_part['desc']
+            part_pk = create_part(search_form, category, trackable=True)
+            if part_pk and len(curr_part.get('attachments', '')):
+                for attachment in curr_part['attachments']:
+                    inventree_api.upload_part_attachment(attachment, part_pk)
             continue
-
         # Template part
-        if not dry and template_flag:
+        elif not dry and template_flag:
             search_form = {}
             for field in SEARCH_FIELDS_LIST:
                 search_form[field] = ''
@@ -441,19 +454,6 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             continue
 
         local_res = False
-
-        search_term = mpn
-        # Search for the IPN
-        part = None
-        for _retry in range(0,3):
-            try:
-                part = inventree_api.get_part_from_ipn(search_term, rev)
-            except:
-                continue
-            break
-        # Account for revision mismatch
-        if part and part.revision != rev:
-            part = None
 
         # Cannot do supplier search if no manf currently, so short circuit
         if not len(manf):
@@ -622,15 +622,17 @@ def unique_item(manf, mpn, rev):
     return manf + "_" + mpn + "_" + rev
 
 class Assembly:
-    def __init__(self, ipn):
+    def __init__(self, ipn, manf, rev):
         self.ipn = ipn
+        self.manf = manf
+        self.rev = rev
         self.blanks = []
         self.sub_assemblies = {}
         self.parts = {}
-        self.csv = None
+        self.csv = []
         self.headers = {}
         self.header_row = 0
-        self.parent_path = []
+        self.path = []
         
     def add_combine_parts(self, part):
         curr = unique_item(part['manf'], part['mpn'], part['rev'])
@@ -645,48 +647,58 @@ class Assembly:
         # Updated parts dict
         self.parts[curr] = updated
 
-    def process_conn(self, ref, apn, conn_manf, conn_mpn):
+    def process_conn(self, ref, apn, manf, rev, conn_manf, conn_mpn):
+        conn_bom = []
         # conn_mpn defaults to 'apn.csv'
         if not len(conn_mpn):
             conn_mpn = apn + '.csv' 
-
-        if conn_manf == 'sub':
-            sub = Assembly(apn)
-            sub.csv_parse(conn_mpn, )
-            # TODO basic check of subassembly
-            self.sub_assemblies[apn] = sub
-        elif conn_manf == 'bom':
-            # if conn_mpn is entered, conn_manf must be too
-            if not conn_mpn.startswith('['):
-                print("Invalid conn_mpn: ", conn_mpn)
-                return
+        # if conn_mpn is entered, conn_manf must be too
+        elif conn_mpn.startswith('['):
             conn_mpn = stringify_list_dict(conn_mpn)
             conn_bom = eval(conn_mpn)
             bom_type = type(conn_bom)
-
             if bom_type != list:
                 print("Invalid conn_mpn field: ", conn_mpn)
                 return
 
+            csv_str = "refs;mpn;manf;qty;rev;conn_mpn;conn_manf;supp;spn\n" 
             for j in range(0, len(conn_bom)):
                 for i in range(0, len(conn_bom[j])):
                     conn_bom[j][i] = conn_bom[j][i].lstrip()
 
+                [refc, manf, mpn, qty] = conn_bom[j]
+                csv_str += "{};{};{};{};;;;;".format(refc + ref, mpn, manf, qty)
+                # # Create part, ref must be made unique buy appending the ref for the owning part
+                # part = {'refs': refc + ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': ''}
+                # self.add_combine_parts(part)
+            conn_mpn = csv_str
+
+        if conn_manf == 'sub':
+            sub = Assembly(apn, manf, rev)
+            sub.csv_parse(conn_mpn, self.path)
+            # TODO basic check of subassembly
+            self.sub_assemblies[apn] = sub
+        elif conn_manf == 'local':
+            for j in range(0, len(conn_bom)):
                 [refc, manf, mpn, qty] = conn_bom[j]
                 # Create part, ref must be made unique buy appending the ref for the owning part
                 part = {'refs': refc + ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': ''}
                 self.add_combine_parts(part)
 
     def csv_parse(self, csv_str, path_prefix=''):
-        if os.path.exists(path_prefix, csv_str):
-            with open(csv_str, 'r') as file:
+        path,_ext = os.path.splitext(path_prefix + '/' + csv_str)
+        path += '.csv'
+        print("Path: ", path)
+        if os.path.exists(path):
+            self.path = os.path.dirname(path)
+            with open(path, 'r') as file:
                 csv_str = file.read()
         print("CSV str: ", csv_str)
         # Remove any windows line endings
         csv_str = csv_str.replace('\r', '')
         # Split into lines
         csv_str = csv_str.split('\n')
-        self.csv = csv.reader(csv_str, delimiter=';')
+        self.csv = list(csv.reader(csv_str, delimiter=';'))
 
         REF_FIELDS = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn']
         PASS_MASK = (1 << (len(REF_FIELDS) - 2)) - 1;
@@ -694,7 +706,6 @@ class Assembly:
             mask = 0
             self.headers = {}
             for item in row:
-                print("Item: ", item)
                 i = row.index(item)
                 for j, field in enumerate(REF_FIELDS):
                     keys = field
@@ -709,26 +720,27 @@ class Assembly:
                             break
                     if res:
                         break
+            self.header_row += 1
             # The 'supp' and 'spn' are optional
             if mask & PASS_MASK == PASS_MASK:
                 break
-            self.header_row += 1
 
         if self.header_row > len(row) - 1:
             print("Invalid CSV Formatting, could not find all the required headers")
             return
 
         max_len = max(*self.headers.values()) + 1
-        for row in list(self.csv)[self.header_row:]: 
+        for row in self.csv[self.header_row:]: 
             if len(row) < max_len:
                 continue
             conn_mpn = row[self.headers['conn_mpn']].lstrip()
             conn_manf = row[self.headers.get('conn_manf', '')].lstrip()
             ref = row[self.headers['refs']]
             mpn = row[self.headers['mpn']]
+            manf = row[self.headers['manf']]
+            rev = row[self.headers['rev']]
 
-            self.process_conn(ref, mpn, conn_manf, conn_mpn)
-
+            self.process_conn(ref, mpn, manf, rev, conn_manf, conn_mpn)
 
             qty = row[self.headers['qty']]
             if not len(ref) and len(qty):
@@ -737,7 +749,7 @@ class Assembly:
                 self.blanks.append(ref)
                 continue
 
-            part = {'refs': ref, 'manf': row[self.headers['manf']], 'mpn': mpn, 'qty': int(qty), 'rev':  row[self.headers['rev']]}
+            part = {'refs': ref, 'manf': manf,'mpn': mpn, 'qty': int(qty), 'rev': rev}
             # New entry or append to existing
             self.add_combine_parts(part)
 
@@ -746,8 +758,14 @@ class Assembly:
         res = []
         for sub in self.sub_assemblies.values():
             res += sub.create(dry, variants)
-        print("Parts:", self.parts)
-        res += search_and_create(list(self.parts.values()), dry, variants)
+        # Don't run on entries that are sub assemblies
+        # they are created later 
+        no_sub = []
+        for p in self.parts.values():
+            if p.get('mpn', '') not in self.sub_assemblies.keys():
+                no_sub.append(p)
+            
+        res += search_and_create(no_sub, dry, variants)
 
         return res
 
@@ -759,7 +777,7 @@ class Assembly:
 
         inventree_interface.connect_to_server()
         res = True
-        for row in list(self.csv)[self.header_row:]: 
+        for row in self.csv[self.header_row:]: 
             mpn = row[self.headers['mpn']].lstrip()
             rev = row[self.headers['rev']].lstrip()
             local_res = find_part(mpn, rev) is None
@@ -771,12 +789,10 @@ class Assembly:
 
 
     def assembly(self, assembly_dict) -> bool:
-        return create_assembly(assembly_dict, list(self.parts.values))
+        return create_assembly(assembly_dict, list(self.parts.values()))
 
     def parse(self, csv_str, assembly_dict, dry, variants) -> dict | None:
         self.csv_parse(csv_str)
-
-        print(csv_str)
 
         # Create all bom parts (including those in sub assemblies)
         res = self.create(dry, variants)
@@ -806,7 +822,7 @@ class Assembly:
             return res
 
         # Remove 'V' from rev
-        rev = assembly_dict['rev'].replace('V','').replace('v','')
+        rev = assembly_dict.get('rev', '').replace('V','').replace('v','')
         assembly_dict['rev'] = rev
 
         # Parse attachments
@@ -842,7 +858,7 @@ class Assembly:
             # Find the supplier and spn from the top level assembly
             supp = ''
             spn = ''
-            for row in self.csv[self.firstline:]:
+            for row in self.csv[self.header_row:]:
                 if row[self.headers['mpn']] != sub.ipn:
                     continue
                 supp = row[self.headers['supp']]
@@ -854,10 +870,10 @@ class Assembly:
                 spn = sub.ipn
 
             # Assemble dict for the sub assembly
-            sub_dict = {'ipn': sub.ipn, 'name': sub.ipn, 'supp': supp, 'spn': spn, 'desc': ''} 
+            sub_dict = {'manf': sub.manf, 'ipn': sub.ipn, 'name': sub.ipn, 'supp': supp, 'spn': spn, 'desc': '', 'rev': rev} 
             # Create parts for the sub assemblies
             res &= sub.assembly(sub_dict)
-        res &= create_assembly(assembly_dict, self.parts)
+        res &= self.assembly(assembly_dict)
         if not res:
             return None
         return assembly_dict
@@ -924,13 +940,17 @@ def main():
         return;
 
     # Parse assembly_dict
-    assembly_dict = {}
+    assembly_dict = None
+    ipn = ''
+    rev = ''
     if args.assembly:
         assembly_dict = eval(args.assembly)
-
+        ipn = assembly_dict.get('ipn', '')
+        manf = assembly_dict.get('manf', 'Micromelon')
+        rev = assembly_dict.get('rev', '')
 
     # Parse provided list of parts and create assembly if assembly_dict specified
-    assembly = Assembly(assembly_dict.get('ipn', ''))
+    assembly = Assembly(ipn, manf, rev)
     res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
     exit(res)

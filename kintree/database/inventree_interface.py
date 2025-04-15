@@ -711,14 +711,15 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
         #             parameters=inventree_part['parameters'],
         #             show_progress=show_progress):
         #         return new_part, part_pk, inventree_part
+
+
+        # Overwrite manufacturer name with matching one from database
+        manufacturer_name = inventree_fuzzy_company_match(part_info.get('manufacturer_name', ''))
+        manufacturer_mpn = part_info.get('manufacturer_part_number', '')
+        manufacturer_part = None
             
         # Create manufacturer part
-        if not(inventree_part['assembly'] or inventree_part['template']) and inventree_part['manufacturer_name'] and inventree_part['manufacturer_part_number']:
-            # Overwrite manufacturer name with matching one from database
-            manufacturer_name = inventree_fuzzy_company_match(inventree_part['manufacturer_name'])
-            # Get MPN
-            manufacturer_mpn = inventree_part['manufacturer_part_number']
-
+        if not(inventree_part['assembly'] or inventree_part['template']) and manufacturer_name and manufacturer_mpn:
             cprint('\n[MAIN]\tCreating manufacturer part', silent=settings.SILENT)
             manufacturer_part = inventree_api.is_new_manufacturer_part(
                 manufacturer_name=manufacturer_name,
@@ -740,13 +741,13 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                 if is_manufacturer_part_created:
                     cprint('[INFO]\tSuccess: Added new manufacturer part', silent=settings.SILENT)
 
-        # Create supplier part
-        if inventree_part['supplier_name'] and inventree_part['supplier_part_number']:
-            # Overwrite manufacturer name with matching one from database
-            supplier_name = inventree_fuzzy_company_match(inventree_part['supplier_name'])
-            # Get SKU
-            supplier_sku = inventree_part['supplier_part_number']
 
+        supplier_name = inventree_fuzzy_company_match(inventree_part.get('supplier_name', ''))
+        supplier_sku = part_info.get('supplier_part_number', '')
+        supplier_link = part_info.get('supplier_link', '')
+
+        # Create supplier part
+        if supplier_name and supplier_sku:
             cprint('\n[MAIN]\tCreating supplier part', silent=settings.SILENT)
             is_new_supplier_part, supplier_part = inventree_api.is_new_supplier_part(
                 supplier_name=supplier_name,
@@ -758,12 +759,11 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                 # Create a new supplier part
                 is_supplier_part_created, supplier_part = inventree_api.create_supplier_part(
                     part_id=part_pk,
-                    manufacturer_name=manufacturer_name,
-                    manufacturer_mpn=manufacturer_mpn,
+                    manf_part_id=manufacturer_part,
                     supplier_name=supplier_name,
                     supplier_sku=supplier_sku,
                     description=inventree_part['description'],
-                    link=inventree_part['supplier_link'],
+                    link=supplier_link,
                 )
 
                 if is_supplier_part_created:
@@ -829,6 +829,7 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
     result = False
     cprint('\n[MAIN]\tSearching for original part in database', silent=settings.SILENT)
     part = inventree_api.fetch_part(part_id, part_ipn)
+    part_description = ''
 
     if part:
         # print("Part keys: ", part.keys())
@@ -882,6 +883,7 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
     # Overwrite manufacturer name with matching one from database
     manufacturer_name = inventree_fuzzy_company_match(part_info.get('manufacturer_name', ''))
     manufacturer_mpn = part_info.get('manufacturer_part_number', '')
+    manufacturer_part = None
     datasheet = part_info.get('datasheet', '')
 
     # attachment = part.getAttachments()
@@ -904,11 +906,24 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
 
     # Create manufacturer part
     if manufacturer_name and manufacturer_mpn:
-        inventree_create_manufacturer_part(part_id=part_pk,
-                                           manufacturer_name=manufacturer_name,
-                                           manufacturer_mpn=manufacturer_mpn,
-                                           datasheet=datasheet,
-                                           description=part_description)
+        cprint('\n[MAIN]\tCreating manufacturer part', silent=settings.SILENT)
+        manufacturer_part = inventree_api.is_new_manufacturer_part(
+            manufacturer_name=manufacturer_name,
+            manufacturer_mpn=manufacturer_mpn,
+        )
+
+        if manufacturer_part:
+            cprint('[INFO]\tManufacturer part already exists, skipping.', silent=settings.SILENT)
+        else:
+            is_manufacturer_part_created = inventree_create_manufacturer_part(
+                part_id=part_pk,
+                manufacturer_name=manufacturer_name,
+                manufacturer_mpn=manufacturer_mpn,
+                datasheet=datasheet,
+                description=part_description)
+            
+            if is_manufacturer_part_created:
+                cprint('[INFO]\tSuccess: Added new manufacturer part', silent=settings.SILENT)
     else:
         cprint('[INFO]\tWarning: No manufacturer part to create', silent=settings.SILENT)
 
@@ -933,8 +948,7 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
             # Create a new supplier part
             is_supplier_part_created, supplier_part = inventree_api.create_supplier_part(
                 part_id=part_pk,
-                manufacturer_name=manufacturer_name,
-                manufacturer_mpn=manufacturer_mpn,
+                manf_part_id=manufacturer_part,
                 supplier_name=supplier_name,
                 supplier_sku=supplier_sku,
                 description=part_description,

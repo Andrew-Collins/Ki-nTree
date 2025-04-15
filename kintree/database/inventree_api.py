@@ -545,9 +545,9 @@ def create_part(category_id: int, name: str, description: str, revision: str, ip
             'virtual': False,
             'component': True,
             'assembly': assembly,
-            'purchaseable': not template and not assembly,
+            'purchaseable': not template,
             'is_template' : template,
-            'trackable': assembly or (not template and trackable),
+            'trackable': trackable,
         }
         if variant: 
             data['variant_of'] = variant
@@ -743,12 +743,11 @@ def create_manufacturer_part(part_id: int, manufacturer_name: str, manufacturer_
     return False
 
 
-def create_supplier_part(part_id: int, manufacturer_name: str, manufacturer_mpn: str, supplier_name: str, supplier_sku: str, description: str, link: str):
+def create_supplier_part(part_id: int, manf_part_id: int, supplier_name: str, supplier_sku: str, description: str, link: str):
     ''' Create InvenTree supplier part
 
         part_id: Part the supplier data is linked to
-        manufacturer_name: Manufacturer the supplier data is linked to
-        manufacturer_mpn: MPN the supplier data is linked to
+        manf_part_id: Manufacturer Part the supplier data is linked to
         supplier: Company that supplies this SupplierPart object
         SKU: Stock keeping unit (supplier part number)
         manufacturer: Company that manufactures the SupplierPart (leave blank if it is the sample as the Supplier!)
@@ -761,11 +760,6 @@ def create_supplier_part(part_id: int, manufacturer_name: str, manufacturer_mpn:
     # Get Supplier ID
     supplier_id = get_company_id(supplier_name)
 
-    if not manufacturer_name or not manufacturer_mpn:
-        # Unset manufacturer data
-        manufacturer_name = None
-        manufacturer_mpn = None
-
     if supplier_id:
         # Validate supplier link
         if not validators.url(link):
@@ -773,8 +767,7 @@ def create_supplier_part(part_id: int, manufacturer_name: str, manufacturer_mpn:
 
         supplier_part = SupplierPart.create(inventree_api, {
             'part': part_id,
-            'manufacturer': manufacturer_name,
-            'MPN': manufacturer_mpn,
+            'manufacturer_part': manf_part_id,
             'supplier': supplier_id,
             'SKU': supplier_sku,
             'link': link,
