@@ -406,7 +406,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                 continue
                 
             # Create Bare PCB part
-            elif not dry and 'a' not in mpn.lower():
+            elif not dry[1] and 'a' not in mpn.lower():
                 search_form = {}
                 for field in search_fields_list:
                     search_form[field] = ''
@@ -425,7 +425,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             continue
 
         # Template part
-        if not dry and template_flag:
+        if not dry[0] and template_flag:
             search_form = {}
             for field in search_fields_list:
                 search_form[field] = ''
@@ -472,14 +472,14 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             var = None
             # Only need to search for and update the variants once
             if generic_id is None:
-                res = find_generic(ref_prefix, search_form, raw_form, category, variants and not dry)
+                res = find_generic(ref_prefix, search_form, raw_form, category, variants and not dry[0])
                 if res is not None:
                     (generic_id, generic_name) = res
                     if variants:
                         var = generic_id
                     elif generic_name not in result:
                         result.append((mpn, generic_name))
-            if dry:
+            if dry[0]:
                 continue
             print("Creating normal")
             part = create_part(search_form, category, variant=var)
@@ -582,7 +582,7 @@ def init_argparse() -> argparse.ArgumentParser:
     )
     parser.add_argument(
          "--dry", required=False,
-        action='store_true',
+        choices=['all', 'parts', 'assemblies'],
         help="Do not create parts in inventree"
     )
     parser.add_argument(
@@ -899,12 +899,14 @@ def main():
                     extra_assemblies[board].append(part)
 
 
-    print("List: ", part_list)
-    print("Extra assemblies: ", extra_assemblies)
+    print('List: ', part_list)
+    print('Extra assemblies: ', extra_assemblies)
+
+    dry = [args.dry == 'all' or args.dry == 'parts', args.dry == 'all' or args.dry == 'assemblies']
 
     if args.replace:
         #
-        print("Found mpns with generics")
+        print('Found mpns with generics')
 
     if len(assembly_dict):
         rev = assembly_dict['rev'].replace('V','')
@@ -923,7 +925,7 @@ def main():
         # IPN of board is one char less than the assembly IPN
         # Match revision to assembly
         part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
-    res = search_and_create(part_list, args.dry, args.variants)
+    res = search_and_create(part_list, dry, args.variants)
     possible_generics = []
     for part in res:
         if type(part) is tuple:
@@ -939,7 +941,7 @@ def main():
         print("Parts have no mpn: ", blank_parts)
 
     res = not len(res) and not len(blank_parts)
-    if not args.dry and res and args.assembly:
+    if not dry[1] and res and args.assembly:
         res &= create_assembly(assembly_dict, part_list)
         for board, board_list in extra_assemblies.items():
             assembly_dict['ipn'] = board
