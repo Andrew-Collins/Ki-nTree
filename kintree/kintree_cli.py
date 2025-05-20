@@ -949,3 +949,6 @@ def main():
             assembly_dict['attachments'] = []
             res &= create_assembly(assembly_dict, board_list)
     exit(not res)
+
+if __name__ == '__main__':
+    main()
