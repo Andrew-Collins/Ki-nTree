@@ -57,7 +57,7 @@ def cap_generic(s: str, params = None) -> str:
             foot = size
             break
     if 'metric' in s.lower():
-        (foot,) = re.search("(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+",s).groups()
+        (foot,) = re.search(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s).groups()
     # # search in mm
     # if len(foot) == 0:
     #     (x,y,) = re.search("(\d).*x[ ]*(\d)mm",s).groups()
@@ -131,7 +131,7 @@ def res_generic(s: str, params = None) -> str:
             foot = size
             break
     if 'metric' in s.lower():
-        (foot,) = re.search("(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+",s).groups()
+        (foot,) = re.search(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s).groups()
 
     (tol,) = re.search("((?:[0-9]*[.])?[0-9]+%)",s).groups()
 
@@ -543,7 +543,7 @@ def get_input(name: str) -> str | None:
             paste_mode=True
         elif c == 'backspace':
             if len(out):
-                print("\b \b", end='', flush=True)
+                print('\b \b', end='', flush=True)
                 out = out[:-1]
         elif c in ['up', 'down', 'left', 'right', 'tab']:
             out = out
@@ -762,12 +762,12 @@ def main():
                 # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
             else:
                 # Make sure fields are stringified
-                conn_mpn = re.sub("\[[\s\t]*\[", "[[", conn_mpn)
-                conn_mpn = re.sub("\][\s\t]*\]", "]]", conn_mpn)
-                conn_mpn = re.sub("([^\]]),", "\g<1>', '", conn_mpn)
-                conn_mpn = re.sub("([^\]]): ", "\g<1>': ", conn_mpn)
-                conn_mpn = re.sub("([^\]])\]", "\g<1>']", conn_mpn)
-                conn_mpn = re.sub("\[([^\[])", "['\g<1>", conn_mpn)
+                conn_mpn = re.sub(r'\[[\s\t]*\[', "[[", conn_mpn)
+                conn_mpn = re.sub(r'\][\s\t]*\]', "]]", conn_mpn)
+                conn_mpn = re.sub(r'([^\]]),', r'\g<1>\', \'', conn_mpn)
+                conn_mpn = re.sub(r'([^\]]): ', r'\g<1>\': ', conn_mpn)
+                conn_mpn = re.sub(r'([^\]])\]', r'\g<1>\']', conn_mpn)
+                conn_mpn = re.sub(r'\[([^\[])', r'[\'\g<1>', conn_mpn)
                 # Only the opening dict bracket needs to be quoted
                 conn_mpn = re.sub("{", "{'", conn_mpn)
                 # Enclose all in square brackets if not dict or already an overall list
@@ -832,9 +832,9 @@ def main():
     for (board, d) in extra_rows.items():
         for (parent, bom) in d.items():
             # Split the ref into individual numbers
-            par_r = re.search("([A-Z]+)\d", parent).groups()[0]
+            par_r = re.search(r'([A-Z]+)\d', parent).groups()[0]
             par_i = []
-            par_ranges = re.findall(par_r + "\d", parent)
+            par_ranges = re.findall(par_r + r'\d', parent)
             for rang in par_ranges:
                 item = rang.replace(par_r, "")
                 sp = item.split('-')
@@ -867,7 +867,7 @@ def main():
                     #     return str(par_n + n)
                     # ref_total += re.sub("\d+", ref_mult, ref) + " "
 
-                    for sub_ref in re.split(",| |\|", ref):
+                    for sub_ref in re.split(',| |\|', ref):
                         ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
                 ref_total = ref_total[:-1]
 
