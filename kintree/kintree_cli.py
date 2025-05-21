@@ -911,7 +911,11 @@ def main():
     if len(assembly_dict):
         rev = assembly_dict['rev'].replace('V','')
         rev = rev.replace('v','')
-        assembly_dict['rev'] = rev
+        # rev can be a tuple/list:
+        # (Board Rev, Assembly Rev)
+        if type(rev) == str:
+            rev = (rev, rev)
+        assembly_dict['rev'] = rev[1]
         images = assembly_dict.get('image', [])
         attachments = assembly_dict.get('attachments', [])
         pcb_image = ''
@@ -924,7 +928,7 @@ def main():
             desc = 'PCB ' + desc
         # IPN of board is one char less than the assembly IPN
         # Match revision to assembly
-        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
+        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
     res = search_and_create(part_list, dry, args.variants)
     possible_generics = []
     for part in res:
