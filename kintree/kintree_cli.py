@@ -259,9 +259,26 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
 
     overwrite = not bool(assembly.get('append', False))
 
+
+    # Process what type of assembly
+    category_short = assembly.get('category', '')
+    category = 'Assembled PCBs'
+    if category_short == 'PCBA':
+        category = 'Assembled PCBs'
+    elif category_short == 'TOP':
+        category = 'End Products'
+    elif category_short == 'CBLA':
+        category = 'Cable Assemblies'
+    elif category_short == 'CBL':
+        category = 'Cable'
+
+    if inventree_api.get_inventree_category_id([category]) == -1:
+        print("Invalid category for assembly: ", category)
+        return False
+
     inventree_interface.connect_to_server()
 
-    pk  = create_part(search_form, category = ["Assembled PCBs"], assembly=True, trackable=('pcb' in assembly.keys()))
+    pk  = create_part(search_form, category = category, assembly=True, trackable=(category_short == 'PCBA'))
 
     if pk and len(attachments):
         for attachment in attachments:
@@ -823,7 +840,11 @@ class Assembly:
 
         # Remove 'V' from rev
         rev = assembly_dict.get('rev', '').replace('V','').replace('v','')
-        assembly_dict['rev'] = rev
+        # rev can be a tuple/list:
+        # (Board Rev, Assembly Rev)
+        if type(rev) == str:
+            rev = (rev, rev)
+        assembly_dict['rev'] = rev[1]
 
         # Parse attachments
         attachments = assembly_dict.get('attachments', [])
@@ -842,11 +863,11 @@ class Assembly:
             desc = 'PCB ' + desc
 
         # Add the bare board if the assembly is PCBA
-        if assembly_dict.get('pcb', False):
+        if assembly_dict.get('category', '') == 'PCBA':
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
             board_ipn = assembly_dict['ipn'][:-1]
-            self.parts[board_ipn] = {'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': board_ipn, 'rev': rev, 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments}
+            self.parts[board_ipn] = {'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': board_ipn, 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments}
 
 
         # Only create assembly if no errors, not a dry run
@@ -897,13 +918,11 @@ def main():
 
     # Digikey token can be manually provided
     if args.digi_token:
-        settings.DIGIKEY_STORAGE_PATH = "/tmp"
+        token_path = os.path.dirname(args.digi_token)
+        if len(token_path) == 0:
+            token_path = os.getcwd()
+        settings.DIGIKEY_STORAGE_PATH = token_path
         os.environ['DIGIKEY_STORAGE_PATH'] = settings.DIGIKEY_STORAGE_PATH
-        if not os.path.exists(os.environ['DIGIKEY_STORAGE_PATH']):
-            os.makedirs(os.environ['DIGIKEY_STORAGE_PATH'], exist_ok=True)
-        shutil.copyfile(args.digi_token, "/tmp/token_storage.json")
-        print("Copied token file to /tmp")
-        print(os.listdir("/tmp"))
 
     # The cli checks itself, disable the later checks
     settings.CHECK_EXISTING = False
@@ -954,3 +973,6 @@ def main():
     res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
     exit(res)
+
+if __name__ == '__main__':
+    main()
