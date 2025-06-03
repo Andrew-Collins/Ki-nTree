@@ -33,7 +33,7 @@ USUAL_SUPP = ["Digi-Key", "Mouser", "Element14"]
 
 RENAME_SUPP = {"Digi-Key": "DigiKey"}
 
-REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'] }
+REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'] }
 
 def cap_generic(s: str, params = None) -> str:
     cap_units = ['p','n','u','m','']
@@ -170,7 +170,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
         ipn = part_number
     search_term = ipn
     part_info['IPN'] = ipn
-    print("IPN: ", ipn)
+    print("IPN/Rev: ", ipn, '/', search_form['revision'])
     if variant:
         part_info['variant'] = variant
     part_info['template'] = template
@@ -240,9 +240,18 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
     search_form = {}
     for field in SEARCH_FIELDS_LIST:
         search_form[field] = ''
+
+    # Process what type of assembly
+    category = assembly.get('category', '')
+    print("Category:", category)
+
+    if inventree_api.get_inventree_category_id(category) == -1:
+        print("Invalid category for assembly: ", category)
+        return False
+
     search_form['name'] = assembly.get('name', ipn)
     desc = assembly.get('desc', '')
-    if len(desc):
+    if len(desc) and 'Assembled PCBs' in category:
         search_form['description'] = 'PCB Assembly ' + desc
     search_form['revision'] = assembly.get('rev', '')
     search_form['manufacturer_name'] = manf
@@ -259,26 +268,9 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
 
     overwrite = not bool(assembly.get('append', False))
 
-
-    # Process what type of assembly
-    category_short = assembly.get('category', '')
-    category = 'Assembled PCBs'
-    if category_short == 'PCBA':
-        category = 'Assembled PCBs'
-    elif category_short == 'TOP':
-        category = 'End Products'
-    elif category_short == 'CBLA':
-        category = 'Cable Assemblies'
-    elif category_short == 'CBL':
-        category = 'Cable'
-
-    if inventree_api.get_inventree_category_id([category]) == -1:
-        print("Invalid category for assembly: ", category)
-        return False
-
     inventree_interface.connect_to_server()
 
-    pk  = create_part(search_form, category = category, assembly=True, trackable=(category_short == 'PCBA'))
+    pk  = create_part(search_form, category = category, assembly=True, trackable=('pcb' in category[0].lower()))
 
     if pk and len(attachments):
         for attachment in attachments:
@@ -879,19 +871,26 @@ class Assembly:
             # Find the supplier and spn from the top level assembly
             supp = ''
             spn = ''
+            ref = ''
             for row in self.csv[self.header_row:]:
                 if row[self.headers['mpn']] != sub.ipn:
                     continue
                 supp = row[self.headers['supp']]
                 spn = row[self.headers['spn']]
+                ref = row[self.headers['refs']]
                 break;
 
             # spn => ipn if supp is specified
             if len(supp) and not len(spn):
                 spn = sub.ipn
 
+            # Category is the ref prefix
+            (_, ref_prefix) = is_template(ref, sub.ipn)
+
+            category = REF_TO_CATEGORY.get(ref_prefix)
+
             # Assemble dict for the sub assembly
-            sub_dict = {'manf': sub.manf, 'ipn': sub.ipn, 'name': sub.ipn, 'supp': supp, 'spn': spn, 'desc': '', 'rev': rev} 
+            sub_dict = {'manf': sub.manf, 'ipn': sub.ipn, 'name': sub.ipn, 'supp': supp, 'spn': spn, 'desc': '', 'rev': sub.rev, 'category': category} 
             # Create parts for the sub assemblies
             res &= sub.assembly(sub_dict)
         res &= self.assembly(assembly_dict)
