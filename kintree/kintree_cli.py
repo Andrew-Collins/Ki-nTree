@@ -606,11 +606,6 @@ def init_argparse() -> argparse.ArgumentParser:
     return parser
 
 def main():
-# if __name__ == "__main__":
-    # create_assembly("999999A", [{'mpn': "ERA-6AEB49R9V", 'refs': "R1", 'qty': 1}], overwrite=False)
-    # search_and_create([{'refs': "J1", 'manf': "Sullins",'mpn': "LPPB121NFFN-RC"}], variants=True)
-    # exit(0)
-
     parser = init_argparse()
     args = parser.parse_args()
 
@@ -956,3 +951,38 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# Snippet to transfer suppliers
+    # REAL_ID=<insert_int>
+    # FAKE_ID=<insert_int>
+    # inventree_interface.connect_to_server()
+    # # print(inventree_api.get_all_companies())
+    #
+    # response = inventree_api.inventree_api.get("/company/"+str(FAKE_ID)+"/", id=str(FAKE_ID))
+    # print(response)
+    # parts = inventree_api.Company(inventree_api.inventree_api, pk=FAKE_ID).getSuppliedParts()
+    # print("Num parts:", len(parts))
+    # fail_flag = False
+    # for p in parts:
+    #     print("SPK:",p.pk, "PK:", p.part, "SKU:", p.SKU)
+    #     local_flag = False
+    #     for _retry in range(0,3):
+    #         try:
+    #             response = inventree_api.inventree_api.patch("company/part/"+str(p.pk),
+    #             {
+    #                 'supplier': REAL_ID,
+    #             },
+    #             headers = {"id": str(p.part)})
+    #             local_flag = True
+    #             break
+    #         except Exception as e:
+    #             if "unique set" in format(e):
+    #                 local_flag = True
+    #                 break
+    #             print(e)
+    #             continue
+    #     if not local_flag:
+    #         print("Failed")
+    #         fail_flag = True
+    #
+    # print("Success?", not fail_flag)
