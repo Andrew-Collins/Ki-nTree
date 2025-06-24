@@ -902,12 +902,19 @@ def main():
         print('Found mpns with generics')
 
     if len(assembly_dict):
-        rev = assembly_dict['rev'].replace('V','')
-        rev = rev.replace('v','')
-        # rev can be a tuple/list:
-        # (Board Rev, Assembly Rev)
+        # rev can be a list or str:
+        # [Board Rev, Assembly Rev] or Rev
+        rev = assembly_dict['rev']
         if type(rev) == str:
             rev = (rev, rev)
+        elif type(rev) != list:
+            print("'rev' cannot be a",type(rev))
+            exit(0)
+            
+        for i in range(0,len(rev)):
+            rev[i] = rev[i].replace('v','').replace('V','')
+
+        print("Rev:", rev)
         assembly_dict['rev'] = rev[1]
         images = assembly_dict.get('image', [])
         attachments = assembly_dict.get('attachments', [])
