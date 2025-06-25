@@ -503,9 +503,11 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
                 continue
             print("Creating normal")
             part = create_part(search_form, category, ipn=chosen_ipn, variant=var)
-        if chosen_ipn != mpn or not ipn_match:
+        if chosen_ipn != mpn:
+            print("Chosen spn does not match mpn")
             name_mismatch.append((mpn, chosen_ipn))
         elif not ipn_match:
+            print("ipn not match spn")
             name_mismatch.append((mpn, valid_supp_mpn))
 
         if not local_res:
