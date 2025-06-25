@@ -216,6 +216,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     print("Failed new")
                     delete_failed_parts()
                     continue
+            break
         except Exception as e:
             print("create_part error: ", e)
             continue
@@ -301,7 +302,7 @@ def run_search(supplier, pn, manf = ''):
     # Supplier search
     part_supplier_info = inventree_interface.supplier_search(
         supplier,
-        pn,
+        pn.replace(',', ''),
         manf
     )
 
@@ -486,7 +487,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
                 chosen_ipn = supp_mpn 
 
             # Check if the ipn matches this supplier's mpn
-            ipn_match = ipn_match or (supp_mpn is chosen_ipn)
+            ipn_match = ipn_match or (supp_mpn == chosen_ipn)
 
             part = None
             var = None
@@ -507,7 +508,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
             print("Chosen spn does not match mpn")
             name_mismatch.append((mpn, chosen_ipn))
         elif not ipn_match:
-            print("ipn not match spn")
+            print("ipn does not match spn")
             name_mismatch.append((mpn, valid_supp_mpn))
 
         if not local_res:
@@ -670,6 +671,8 @@ def main():
     # }
     # load_cache_settings()
 
+    dry = [args.dry == 'all' or args.dry == 'parts', args.dry == 'all' or args.dry == 'assemblies']
+
     if args.interactive:
         while 1:
             print("Valid Types: ", list(ref_to_category.keys()))
@@ -691,7 +694,7 @@ def main():
             confirm = input("Is this correct (Y/n): ")
             if not len(confirm) or 'Y' in confirm.upper():
                 part = [{'refs': ref+'1', 'manf': manf, 'mpn': mpn, 'qty': 1}]
-                search_and_create(part, False, variants=True)
+                search_and_create(part, dry, variants=True)
             print("--------------------------------")
         return;
 
@@ -919,8 +922,6 @@ def main():
 
     print('List: ', part_list)
     print('Extra assemblies: ', extra_assemblies)
-
-    dry = [args.dry == 'all' or args.dry == 'parts', args.dry == 'all' or args.dry == 'assemblies']
 
     if args.replace:
         #
