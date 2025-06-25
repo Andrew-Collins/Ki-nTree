@@ -28,7 +28,7 @@ search_fields_list = [
     'image',
 ]
 
-usual_suppliers = ["Digi-Key", "Mouser", "Element14"]
+usual_suppliers = ["Mouser", "Digi-Key", "Element14"]
 
 rename_supppliers = {"Digi-Key": "DigiKey"}
 
@@ -163,10 +163,9 @@ def find_part(mpn, rev):
 
 def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False):
     part_info = copy.deepcopy(search_form)
-    part_number = part_info.get('manufacturer_part_number', None)
     # Update IPN (later overwritten)
     if len(ipn) == 0:
-        ipn = part_number
+        ipn = part_info.get('manufacturer_part_number', '')
     search_term = ipn
     part_info['IPN'] = ipn
     print("IPN: ", ipn)
@@ -365,10 +364,11 @@ def find_generic(ref_prefix, search_form, raw_form, category, create = False):
     return None
 
 
-def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list:
+def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tuple[list[str],list[tuple[str, str]]]:
     print("Dry: ", dry)
     inventree_interface.connect_to_server()
-    result = []
+    not_found = []
+    name_mismatch = []
     for curr_part in part_list:
         ref = curr_part['refs']
         manf = curr_part['manf']
@@ -402,7 +402,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                 break
             if part is not None:
                 print("Found existing part/rev: ", mpn, "/", rev)
-                result.append(mpn)
+                not_found.append(mpn)
                 continue
                 
             # Create Bare PCB part
@@ -456,18 +456,38 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                 continue
             else:
                 print("Part does not have manf and is not an inventree IPN: ", mpn)
-                result.append(mpn)
+                not_found.append(mpn)
                 continue
         elif part:
             local_res = True
         
         generic_id = None
+        # This sets what the ipn will be, it should match the supplier mpn
+        # However suppliers can have different mpns for the same part (especially for molex parts)
+        # So one supplier will need to be picked, the priority of which supplier mpn to use is set by `usual_suppliers`
+        # But if the provided mpn matches an existing ipn, then that is used
+        # But this provided ipn must match at least one supplier mpn
+        if part:
+            chosen_ipn = mpn
+        else:
+            chosen_ipn = None
+        ipn_match = False
+        valid_supp_mpn = None
         for supp in usual_suppliers:
             (search_form, raw_form) = run_search(supp, mpn, manf)
             if len(search_form['name']) < 1:
                 continue
             local_res = True
             print("Found part")
+            supp_mpn = search_form.get('manufacturer_part_number', None)
+            if not valid_supp_mpn:
+                valid_supp_mpn = supp_mpn
+            if chosen_ipn is None:
+                chosen_ipn = supp_mpn 
+
+            # Check if the ipn matches this supplier's mpn
+            ipn_match = ipn_match or (supp_mpn is chosen_ipn)
+
             part = None
             var = None
             # Only need to search for and update the variants once
@@ -477,19 +497,22 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                     (generic_id, generic_name) = res
                     if variants:
                         var = generic_id
-                    elif generic_name not in result:
-                        result.append((mpn, generic_name))
+                    elif generic_name not in not_found:
+                        not_found.append((mpn, generic_name))
             if dry[0]:
                 continue
             print("Creating normal")
-            part = create_part(search_form, category, variant=var)
+            part = create_part(search_form, category, ipn=chosen_ipn, variant=var)
+        if chosen_ipn != mpn or not ipn_match:
+            name_mismatch.append((mpn, chosen_ipn))
+        elif not ipn_match:
+            name_mismatch.append((mpn, valid_supp_mpn))
 
         if not local_res:
             print("Unable to create part: ", mpn)
-            result.append(mpn)
+            not_found.append(mpn)
 
-    return result
-
+    return (not_found, name_mismatch)
 
 
 import sys,tty,os,termios
@@ -929,7 +952,7 @@ def main():
         # IPN of board is one char less than the assembly IPN
         # Match revision to assembly
         part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
-    res = search_and_create(part_list, dry, args.variants)
+    (res, mismatch) = search_and_create(part_list, dry, args.variants)
     possible_generics = []
     for part in res:
         if type(part) is tuple:
@@ -943,8 +966,10 @@ def main():
         print("Parts could not be added: ", res)
     if len(blank_parts):
         print("Parts have no mpn: ", blank_parts)
+    if len(mismatch):
+        print("Part name doesn't match supplier's (ours, theirs): ", mismatch)
 
-    res = not len(res) and not len(blank_parts)
+    res = not len(res) and not len(blank_parts) and not len(mismatch)
     if not dry[1] and res and args.assembly:
         res &= create_assembly(assembly_dict, part_list)
         for board, board_list in extra_assemblies.items():
