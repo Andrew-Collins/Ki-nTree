@@ -497,7 +497,8 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
                 if res is not None:
                     (generic_id, generic_name) = res
                     if variants:
-                        var = generic_id
+                        var = str(generic_id)
+                        print("Variant: ", var)
                     elif generic_name not in not_found:
                         not_found.append((mpn, generic_name))
             if dry[0]:
