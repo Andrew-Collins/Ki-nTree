@@ -467,7 +467,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
         # However suppliers can have different mpns for the same part (especially for molex parts)
         # So one supplier will need to be picked, the priority of which supplier mpn to use is set by `usual_suppliers`
         # But if the provided mpn matches an existing ipn, then that is used
-        # But this provided ipn must match at least one supplier mpn
+        # But if this provided mpn matches a part from a supplier then it must match at least one supplier mpn
         if part:
             chosen_ipn = mpn
         else:
@@ -508,7 +508,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
         if chosen_ipn != mpn:
             print("Chosen spn does not match mpn")
             name_mismatch.append((mpn, chosen_ipn))
-        elif not ipn_match:
+        elif not ipn_match and valid_supp_mpn:
             print("ipn does not match spn")
             name_mismatch.append((mpn, valid_supp_mpn))
 
