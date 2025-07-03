@@ -665,12 +665,9 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("--variants",
                         required= False,
                         help="Create template parts and link to variants (always on in interactive mode)")
-    parser.add_argument("-p", "--path",
+    parser.add_argument("-b", "--bom",
                         required= False,
-                        help="Path to a CSV file, ';' delimited")
-    parser.add_argument("-s", "--string",
-                        required= False,
-                        help="CSV string, ';' delimited")
+                        help="Path to or String of a CSV file, ';' delimited")
 
     return parser
 
@@ -758,10 +755,14 @@ class Assembly:
                 self.add_combine_parts(part)
 
     def csv_parse(self, csv_str, path_prefix=''):
-        path,_ext = os.path.splitext(path_prefix + '/' + csv_str)
-        path += '.csv'
-        print("Path: ", path)
+        path = csv_str
+        if len(path_prefix):
+            path = path_prefix + "/" + path
+
         if os.path.exists(path):
+            path,_ext = os.path.splitext(path_prefix + '/' + csv_str)
+            path += '.csv'
+            print("Path: ", path)
             self.path = os.path.dirname(path)
             with open(path, 'r') as file:
                 csv_str = file.read()
@@ -1031,47 +1032,7 @@ def main():
         return;
 
 
-    csv_str = args.string
-    print("Path: ", args.path)
-    if not(args.path is None) and os.path.exists(args.path):
-        with open(args.path, 'r') as file:
-            csv_str = file.read()
-    print("CSV str: ", csv_str)
-    # Remove any windows line endings
-    csv_str = csv_str.replace('\r', '')
-    # Split into lines
-    csv_str = csv_str.split('\n')
-    r = csv.reader(csv_str, delimiter=';')
-
-    ref_fields = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf']
-    ref_dict = {}
-    first_line = 0
-    for row in r: 
-        ref_dict = {}
-        for item in row:
-            print("Item: ", item)
-            i = row.index(item)
-            for field in ref_fields:
-                keys = field
-                if type(field) == str:
-                    keys = [field]
-                res = False
-                for k in keys:
-                    if k == item.lower():
-                        ref_dict[keys[0]] = i
-                        res = True
-                        break
-                if res:
-                    break
-        print(ref_dict)
-        if len(ref_dict) == len(ref_fields):
-            break
-        first_line += 1
-
-
-    if first_line > len(row) - 1:
-        print("Invalid CSV Formatting, could not find all the required headers")
-        exit(1)
+    print("BOM: ", args.bom)
 
     # Parse assembly_dict
     assembly_dict = None
@@ -1085,7 +1046,7 @@ def main():
 
     # Parse provided list of parts and create assembly if assembly_dict specified
     assembly = Assembly(ipn, manf, rev)
-    res = assembly.parse(csv_str, assembly_dict, args.dry, args.variants)
+    res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
     blank_parts = []
     extra_rows = {}
