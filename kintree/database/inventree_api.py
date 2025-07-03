@@ -42,10 +42,12 @@ def connect(server: str,
                             proxies=proxies,
                             token=token)
 
-    try:
-        inventree_api = get_inventree_api_timeout()
-    except:
-        return False
+    for _retry in range(0,3):
+        try:
+            inventree_api = get_inventree_api_timeout()
+            break
+        except:
+            continue
 
     if inventree_api.token:
         return True
@@ -73,11 +75,13 @@ def get_inventree_category_id(category_tree: list) -> int:
             parent_category_id = get_inventree_category_id(category_tree[:-1])
             if parent_category_id:
                 for category in part_categories:
-                    try:
-                        if parent_category_id == category.getParentCategory().pk:
-                            return category.pk
-                    except AttributeError:
-                        pass
+                    for _retry in range(0,3):
+                        try:
+                            if parent_category_id == category.getParentCategory().pk:
+                                return category.pk
+                        except AttributeError:
+                            continue
+                    pass
                     #     # Check parent id match (if passed as argument)
                     #     match = True
                     #     if parent_category_id:
@@ -107,10 +111,12 @@ def get_inventree_stock_location_id(stock_location_tree: list) -> int:
             parent_stock_location_id = get_inventree_category_id(stock_location_tree[:-1])
             if parent_stock_location_id:
                 for location in stock_locations:
-                    try:
-                        if parent_stock_location_id == location.getParentLocation().pk:
-                            return location.pk
-                    except AttributeError:
+                    for _retry in range(0,3):
+                        try:
+                            if parent_stock_location_id == location.getParentLocation().pk:
+                                return location.pk
+                        except AttributeError:
+                            continue
                         pass
                     #     # Check parent id match (if passed as argument)
                     #     match = True
@@ -137,10 +143,13 @@ def get_categories() -> dict:
 
     def deep_add(tree: dict, keys: list, item: dict):
         if len(keys) == 1:
-            try:
-                tree[keys[0]].update(item)
-            except (KeyError, AttributeError):
-                tree[keys[0]] = item
+            for _retry in range(0,3):
+                try:
+                    tree[keys[0]].update(item)
+                    break
+                except (KeyError, AttributeError):
+                    continue
+            tree[keys[0]] = item
             return
         return deep_add(tree.get(keys[0]), keys[1:], item)
 
@@ -172,10 +181,14 @@ def get_stock_locations() -> dict:
 
     def deep_add(tree: dict, keys: list, item: dict):
         if len(keys) == 1:
-            try:
-                tree[keys[0]].update(item)
-            except (KeyError, AttributeError):
-                tree[keys[0]] = item
+            for _retry in range(0,3):
+                try:
+                    tree[keys[0]].update(item)
+                    break
+                except (KeyError, AttributeError):
+                    continue
+
+            tree[keys[0]] = item
             return
         return deep_add(tree.get(keys[0]), keys[1:], item)
 
@@ -233,10 +246,13 @@ def get_category_parameters(category_id: int) -> list:
 
     category = PartCategory(inventree_api, category_id)
 
-    try:
-        category_templates = category.getCategoryParameterTemplates(fetch_parent=True)
-    except AttributeError:
-        category_templates = None
+    category_templates = None
+    for _retry in range(0,3):
+        try:
+            category_templates = category.getCategoryParameterTemplates(fetch_parent=True)
+            break
+        except AttributeError:
+            continue
 
     if category_templates:
         for template in category_templates:
@@ -298,17 +314,19 @@ def fetch_part(part_id='', part_ipn='') -> int:
 
     part = None
     if part_id:
-        try:
-            part = Part(inventree_api, part_id)
-        except TypeError:
-            # Part ID is invalid (eg. decimal value)
-            cprint('[TREE] Error: Part ID type is invalid')
-        except ValueError:
-            # Part ID is not a positive integer
-            cprint('[TREE] Error: Part ID must be positive')
-        except HTTPError:
-            # Part ID does not exist
-            cprint(f'[TREE] Error: Part with ID={part_id} does not exist in database')
+        for _retry in range(0,3):
+            try:
+                part = Part(inventree_api, part_id)
+                break
+            except TypeError:
+                # Part ID is invalid (eg. decimal value)
+                cprint('[TREE] Error: Part ID type is invalid')
+            except ValueError:
+                # Part ID is not a positive integer
+                cprint('[TREE] Error: Part ID must be positive')
+            except HTTPError:
+                # Part ID does not exist
+                cprint(f'[TREE] Error: Part with ID={part_id} does not exist in database')
     elif part_ipn:
         part = get_part_from_ipn(part_ipn)
     else:
@@ -353,10 +371,14 @@ def is_new_part(category_id: int, part_info: dict) -> int:
                 return item.name
 
     # Retrieve parent category name for parameters compare
-    try:
-        category_name = part_category.getParentCategory().name
-    except AttributeError:
-        category_name = part_category.name
+    for _retry in range(0,3):
+        try:
+            category_name = part_category.getParentCategory().name
+            break
+        except AttributeError:
+            category_name = part_category.name
+            continue
+
     filters = config_interface.load_category_parameters_filters(category=category_name,
                                                                 supplier_config_path=settings.CONFIG_PARAMETERS_FILTERS)
     # cprint(filters)
@@ -413,13 +435,15 @@ def create_category(parent: str, name: str):
     category_list = PartCategory.list(inventree_api)
     for category in category_list:
         if name == category.name:
-            try:
-                # Check if parents are the same
-                if category.getParentCategory().name == parent:
-                    # Return category ID
-                    return category.pk, is_new_category
-            except:
-                return category.pk, is_new_category
+            for _retry in range(0,3):
+                try:
+                    # Check if parents are the same
+                    if category.getParentCategory().name == parent:
+                        # Return category ID
+                        return category.pk, is_new_category
+                    break
+                except:
+                    continue
         elif parent == category.name:
             # Get Parent ID
             parent_id = category.pk
@@ -472,12 +496,12 @@ def upload_part_image(image_url: str, part_id: int, silent=False) -> bool:
     # Upload image to InvenTree
     part = Part(inventree_api, part_id)
     if part:
-        try:
-            return part.uploadImage(image=image_location)
-        except Exception:
-            return False
-    else:
-        return False
+        for _retry in range(0,3):
+            try:
+                return part.uploadImage(image=image_location)
+            except Exception:
+                continue
+    return False
 
 
 def upload_part_attachment(attachment_path: str, part_pk: int) -> str:
@@ -487,12 +511,12 @@ def upload_part_attachment(attachment_path: str, part_pk: int) -> str:
     # Upload Datasheet to InvenTree
     part = Part(inventree_api, part_pk)
     if part:
-        try:
-            attachment = part.uploadAttachment(attachment=attachment_path)
-            return f'{inventree_api.base_url.strip("/")}{attachment["attachment"]}'
-        except Exception:
-            return ''
-    else:
+        for _retry in range(0,3):
+            try:
+                attachment = part.uploadAttachment(attachment=attachment_path)
+                return f'{inventree_api.base_url.strip("/")}{attachment["attachment"]}'
+            except:
+                continue
         return ''
 
 def upload_part_datasheet(datasheet_url: str, part_ipn: int, part_pk: int, silent=False) -> str:
@@ -520,12 +544,12 @@ def upload_part_datasheet(datasheet_url: str, part_ipn: int, part_pk: int, silen
     # Upload Datasheet to InvenTree
     part = Part(inventree_api, part_pk)
     if part:
-        try:
-            attachment = part.uploadAttachment(attachment=datasheet_location)
-            return f'{inventree_api.base_url.strip("/")}{attachment["attachment"]}'
-        except Exception:
-            return ''
-    else:
+        for _retry in range(0,3):
+            try:
+                attachment = part.uploadAttachment(attachment=datasheet_location)
+                return f'{inventree_api.base_url.strip("/")}{attachment["attachment"]}'
+            except:
+                continue
         return ''
 
 
@@ -533,29 +557,32 @@ def create_part(category_id: int, name: str, description: str, revision: str, ip
     ''' Create InvenTree part '''
     global inventree_api
 
-    try:
-        data = {
-            'name': name,
-            'description': description,
-            'category': category_id,
-            'keywords': keywords,
-            'revision': revision,
-            'IPN': ipn,
-            'active': True,
-            'virtual': False,
-            'component': True,
-            'assembly': assembly,
-            'purchaseable': not template,
-            'is_template' : template,
-            'trackable': trackable,
-        }
-        if variant: 
-            data['variant_of'] = variant
-        part = Part.create(inventree_api,  data)
-    except Exception as e:
-        cprint('[TREE]\tError: Part creation failed. Check if Ki-nTree settings match InvenTree part settings.', silent=settings.SILENT)
-        cprint(repr(e), silent=settings.SILENT)
-        return 0
+    part = None
+    for retry in range(0,3):
+        try:
+            data = {
+                'name': name,
+                'description': description,
+                'category': category_id,
+                'keywords': keywords,
+                'revision': revision,
+                'IPN': ipn,
+                'active': True,
+                'virtual': False,
+                'component': True,
+                'assembly': assembly,
+                'purchaseable': not template and not assembly,
+                'is_template' : template,
+                'trackable': assembly or (not template and trackable),
+            }
+            if variant: 
+                data['variant_of'] = variant
+            part = Part.create(inventree_api,  data)
+            break
+        except Exception as e:
+            cprint('[TREE]\tError: Part creation failed. Check if Ki-nTree settings match InvenTree part settings.', silent=settings.SILENT)
+            cprint(repr(e), silent=settings.SILENT)
+            continue
 
     if part:
         return part.pk
@@ -620,10 +647,12 @@ def get_all_companies() -> dict:
 def get_company_id(company_name: str) -> int:
     ''' Get company (supplier/manufacturer) primary key (ID) '''
 
-    try:
-        return get_all_companies()[company_name]
-    except:
-        return 0
+    for _retry in range(0,3):
+        try:
+            return get_all_companies()[company_name]
+        except:
+            continue
+    return 0
 
 
 def is_new_manufacturer_part(manufacturer_name: str, manufacturer_mpn: str, create=True) -> int:
@@ -640,22 +669,24 @@ def is_new_manufacturer_part(manufacturer_name: str, manufacturer_mpn: str, crea
     for company in company_list:
         companies[company.name] = company
 
-    try:
-        # Get all parts
-        part_list = companies[manufacturer_name].getManufacturedParts()
-    except:
-        part_list = None
+    for _retry in range(0,3):
+        try:
+            # Get all parts
+            part_list = companies[manufacturer_name].getManufacturedParts()
+            break
+        except:
+            part_list = []
 
-    if part_list is None:
-        if create:
-            # Create manufacturer
-            cprint(f'[TREE]\tCreating new manufacturer "{manufacturer_name}"', silent=settings.SILENT)
-            create_company(
-                company_name=manufacturer_name,
-                manufacturer=True,
-            )
-        # Get all parts
-        part_list = []
+    # if part_list is None:
+    #     if create:
+    #         # Create manufacturer
+    #         cprint(f'[TREE]\tCreating new manufacturer "{manufacturer_name}"', silent=settings.SILENT)
+    #         create_company(
+    #             company_name=manufacturer_name,
+    #             manufacturer=True,
+    #         )
+    #     # Get all parts
+    #     part_list = []
 
     for item in part_list:
         try:
@@ -681,21 +712,24 @@ def is_new_supplier_part(supplier_name: str, supplier_sku: str):
     for company in company_list:
         companies[company.name] = company
 
-    try:
-        # Get all parts
-        part_list = companies[supplier_name].getSuppliedParts()
-    except:
-        part_list = None
+    part_list = []
+    for _retry in range(0,3):
+        try:
+            # Get all parts
+            part_list = companies[supplier_name].getSuppliedParts()
+            break
+        except:
+            continue
 
-    if part_list is None:
-        # Create
-        cprint(f'[TREE]\tCreating new supplier "{supplier_name}"', silent=settings.SILENT)
-        create_company(
-            company_name=supplier_name,
-            supplier=True,
-        )
-        # Get all parts
-        part_list = []
+    # if part_list is None:
+    #     # Create
+    #     cprint(f'[TREE]\tCreating new supplier "{supplier_name}"', silent=settings.SILENT)
+    #     create_company(
+    #         company_name=supplier_name,
+    #         supplier=True,
+    #     )
+    #     # Get all parts
+    #     part_list = []
 
     for item in part_list:
         if supplier_sku in item.SKU:
@@ -797,19 +831,27 @@ def update_price_breaks(supplier_part,
         manager = CurrencyManager(inventree_api)
         base = manager.getBaseCurrency()
         if base != currency:
-            try:
-                price = manager.convertCurrency(float(price), currency, base)
-            except Exception:
-                cprint('[TREE]\tWarning: Currency conversion failed.',
-                       silent=settings.SILENT)
+            for _retry in range(0,3):
+                try:
+                    price = manager.convertCurrency(float(price), currency, base)
+                    break
+                except Exception:
+                    cprint('[TREE]\tWarning: Currency conversion failed.',
+                           silent=settings.SILENT)
+                    continue
         return price
 
     if not isinstance(supplier_part, SupplierPart):
-        try:
-            supplier_part = SupplierPart(inventree_api, supplier_part)
-        except:
-            cprint('[TREE]\tWarning: Supplier part not found, skipping price break update',
-                   silent=settings.SILENT)
+        flag = False
+        for _retry in range(0,3):
+            try:
+                supplier_part = SupplierPart(inventree_api, supplier_part)
+                flag = True
+                break
+            except:
+                cprint('[TREE]\tWarning: Supplier part not found, skipping price break update',
+                       silent=settings.SILENT)
+        if flag:
             return False
     if not price_breaks:
         cprint('[TREE]\tWarning: No price breaks found, skipping.', silent=settings.SILENT)
@@ -856,14 +898,16 @@ def create_parameter_template(name: str, units: str) -> int:
         if name == item.name:
             return 0
 
-    try:
-        parameter_template = ParameterTemplate.create(inventree_api, {
-            'name': name,
-            'units': units if units else '',
-        })
-    except:
-        cprint(f'[TREE]\tError: Failed to create parameter template "{name}".', silent=settings.SILENT)
-        return 0
+    for _retry in range(0,3):
+        try:
+            parameter_template = ParameterTemplate.create(inventree_api, {
+                'name': name,
+                'units': units if units else '',
+            })
+            break
+        except:
+            cprint(f'[TREE]\tError: Failed to create parameter template "{name}".', silent=settings.SILENT)
+            continue
 
     if parameter_template:
         return parameter_template.pk
@@ -897,14 +941,18 @@ def create_parameter(part_id: int, template_name: int, value: str):
                 if value != item.data and value != '-':
                     parameter = item
                     was_updated = True
-                    try:
-                        parameter.save(data={
-                            'data': value
-                        })
-                    except Exception as e:
-                        cprint(f'[TREE]\tError: Failed to update part parameter "{template_name}".', silent=settings.SILENT)
-                        if "Could not convert" in e.args[0]['body'].__str__():
-                            cprint(f'[TREE]\tError: Parameter value "{value}" is not allowed by server settings.', silent=settings.SILENT)
+                    for _retry in range(0,3):
+                        try:
+                            parameter.save(data={
+                                'data': value
+                            })
+                            break
+                        except Exception as e:
+                            cprint(f'[TREE]\tError: Failed to update part parameter "{template_name}".', silent=settings.SILENT)
+                            if "Could not convert" in e.args[0]['body'].__str__():
+                                cprint(f'[TREE]\tError: Parameter value "{value}" is not allowed by server settings.', silent=settings.SILENT)
+                                break
+                            continue
             break
     # cprint(part_parameters, silent=SILENT)
 
@@ -914,16 +962,19 @@ def create_parameter(part_id: int, template_name: int, value: str):
         - parameter does not exist for this part
     '''
     if template_id > 0 and is_new_part_parameters_template_id:
-        try:
-            parameter = Parameter.create(inventree_api, {
-                'part': part_id,
-                'template': template_id,
-                'data': value,
-            })
-        except Exception as e:
-            cprint(f'[TREE]\tError: Failed to create part parameter "{template_name}".', silent=settings.SILENT)
-            if "Could not convert" in e.args[0]['body'].__str__():
-                cprint(f'[TREE]\tError: Parameter value "{value}" is not allowed by server settings.', silent=settings.SILENT)
+        for _retry in range(0,3):
+            try:
+                parameter = Parameter.create(inventree_api, {
+                    'part': part_id,
+                    'template': template_id,
+                    'data': value,
+                })
+            except Exception as e:
+                cprint(f'[TREE]\tError: Failed to create part parameter "{template_name}".', silent=settings.SILENT)
+                if "Could not convert" in e.args[0]['body'].__str__():
+                    cprint(f'[TREE]\tError: Parameter value "{value}" is not allowed by server settings.', silent=settings.SILENT)
+                    break
+                continue
 
     if parameter:
         return parameter.pk, is_new_part_parameters_template_id, was_updated

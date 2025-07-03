@@ -29,11 +29,11 @@ SEARCH_FIELDS_LIST = [
     'image',
 ]
 
-USUAL_SUPP = ["Digi-Key", "Mouser", "Element14"]
+USUAL_SUPP = ["Mouser", "Digi-Key", "Element14"]
 
 RENAME_SUPP = {"Digi-Key": "DigiKey"}
 
-REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'] }
+REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'] }
 
 def cap_generic(s: str, params = None) -> str:
     cap_units = ['p','n','u','m','']
@@ -58,7 +58,7 @@ def cap_generic(s: str, params = None) -> str:
             foot = size
             break
     if 'metric' in s.lower():
-        (foot,) = re.search("(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+",s).groups()
+        (foot,) = re.search(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s).groups()
     # # search in mm
     # if len(foot) == 0:
     #     (x,y,) = re.search("(\d).*x[ ]*(\d)mm",s).groups()
@@ -132,7 +132,7 @@ def res_generic(s: str, params = None) -> str:
             foot = size
             break
     if 'metric' in s.lower():
-        (foot,) = re.search("(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+",s).groups()
+        (foot,) = re.search(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s).groups()
 
     (tol,) = re.search("((?:[0-9]*[.])?[0-9]+%)",s).groups()
 
@@ -164,10 +164,9 @@ def find_part(mpn, rev):
 
 def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False):
     part_info = copy.deepcopy(search_form)
-    part_number = part_info.get('manufacturer_part_number', None)
     # Update IPN (later overwritten)
     if len(ipn) == 0:
-        ipn = part_number
+        ipn = part_info.get('manufacturer_part_number', '')
     search_term = ipn
     part_info['IPN'] = ipn
     print("IPN/Rev: ", ipn, '/', search_form['revision'])
@@ -222,6 +221,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
                     print("Failed new: ", e)
                     delete_failed_parts()
                     continue
+            break
         except Exception as e:
             print("create_part error: ", e)
             continue
@@ -319,7 +319,7 @@ def run_search(supplier, pn, manf = ''):
     # Supplier search
     part_supplier_info = inventree_interface.supplier_search(
         supplier,
-        pn,
+        pn.replace(',', ''),
         manf
     )
 
@@ -382,10 +382,11 @@ def find_generic(ref_prefix, search_form, raw_form, category, create = False):
     return None
 
 
-def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list:
+def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tuple[list[str],list[tuple[str, str]]]:
     print("Dry: ", dry)
     inventree_interface.connect_to_server()
-    result = []
+    not_found = []
+    name_mismatch = []
     for curr_part in part_list:
         ref = curr_part['refs']
         manf = curr_part['manf']
@@ -432,7 +433,40 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
             if not len(rev):
                 print("No revision found for internal part")
                 continue
+
+            part = None
+            for _retry in range(0,3):
+                try:
+                    part = inventree_api.get_part_from_ipn(search_term, rev)
+                except:
+                    continue
+                break
+            if part is not None:
+                print("Found existing part/rev: ", mpn, "/", rev)
+                not_found.append(mpn)
+                continue
                 
+            # Create Bare PCB part
+            elif not dry[1] and 'a' not in mpn.lower():
+                search_form = {}
+                for field in search_fields_list:
+                    search_form[field] = ''
+                search_form['name'] = mpn
+                search_form['manufacturer_name'] = manf
+                search_form['manufacturer_part_number'] = mpn
+                search_form['revision'] = rev
+                if len(curr_part.get('image', '')):
+                    search_form['image'] = curr_part['image']
+                if len(curr_part.get('desc', '')):
+                    search_form['description'] = curr_part['desc']
+                part_pk = create_part(search_form, category, trackable=True)
+                if part_pk and len(curr_part.get('attachments', '')):
+                    for attachment in curr_part['attachments']:
+                        inventree_api.upload_part_attachment(attachment, part_pk)
+            continue
+
+        # Template part
+        if not dry[0] and template_flag:
             search_form = {}
             for field in SEARCH_FIELDS_LIST:
                 search_form[field] = ''
@@ -471,41 +505,67 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> list
                 continue
             else:
                 print("Part does not have manf and is not an inventree IPN: ", mpn)
-                result.append(mpn)
+                not_found.append(mpn)
                 continue
         elif part:
             local_res = True
         
         generic_id = None
+        # This sets what the ipn will be, it should match the supplier mpn
+        # However suppliers can have different mpns for the same part (especially for molex parts)
+        # So one supplier will need to be picked, the priority of which supplier mpn to use is set by `usual_suppliers`
+        # But if the provided mpn matches an existing ipn, then that is used
+        # But if this provided mpn matches a part from a supplier then it must match at least one supplier mpn
+        if part:
+            chosen_ipn = mpn
+        else:
+            chosen_ipn = None
+        ipn_match = False
+        valid_supp_mpn = None
         for supp in USUAL_SUPP:
             (search_form, raw_form) = run_search(supp, mpn, manf)
             if len(search_form['name']) < 1:
                 continue
             local_res = True
             print("Found part")
+            supp_mpn = search_form.get('manufacturer_part_number', None)
+            if not valid_supp_mpn:
+                valid_supp_mpn = supp_mpn
+            if chosen_ipn is None:
+                chosen_ipn = supp_mpn 
+
+            # Check if the ipn matches this supplier's mpn
+            ipn_match = ipn_match or (supp_mpn == chosen_ipn)
+
             part = None
             var = None
             # Only need to search for and update the variants once
             if generic_id is None:
-                res = find_generic(ref_prefix, search_form, raw_form, category, variants and not dry)
+                res = find_generic(ref_prefix, search_form, raw_form, category, variants and not dry[0])
                 if res is not None:
                     (generic_id, generic_name) = res
                     if variants:
-                        var = generic_id
-                    elif generic_name not in result:
-                        result.append((mpn, generic_name))
-            if dry:
+                        var = str(generic_id)
+                        print("Variant: ", var)
+                    elif generic_name not in not_found:
+                        not_found.append((mpn, generic_name))
+            if dry[0]:
                 continue
             print("Creating normal")
-            part = create_part(search_form, category, variant=var)
+            part = create_part(search_form, category, ipn=chosen_ipn, variant=var)
+        if chosen_ipn != mpn:
+            print("Chosen spn does not match mpn")
+            name_mismatch.append((mpn, chosen_ipn))
+        elif not ipn_match and valid_supp_mpn:
+            print("ipn does not match spn")
+            name_mismatch.append((mpn, valid_supp_mpn))
 
         if not local_res:
             print("Unable to create part: ", mpn)
-            result.append(mpn)
+            not_found.append(mpn)
 
-    return result
+    return (not_found, name_mismatch)
 
-# NOTE: this does not work on windows
 import sys,tty,os,termios
 def getkey():
     old_settings = termios.tcgetattr(sys.stdin)
@@ -552,7 +612,7 @@ def get_input(name: str) -> str | None:
             paste_mode=True
         elif c == 'backspace':
             if len(out):
-                print("\b \b", end='', flush=True)
+                print('\b \b', end='', flush=True)
                 out = out[:-1]
         elif c in ['up', 'down', 'left', 'right', 'tab']:
             out = out
@@ -594,7 +654,7 @@ def init_argparse() -> argparse.ArgumentParser:
                         help="Path to CSV file, or a CSV string (';' delimited)")
     parser.add_argument(
          "--dry", required=False,
-        action='store_true',
+        choices=['all', 'parts', 'assemblies'],
         help="Do not create parts in inventree"
     )
     parser.add_argument(
@@ -898,8 +958,6 @@ class Assembly:
             return None
         return assembly_dict
 
-
-
 def main():
     parser = init_argparse()
     args = parser.parse_args()
@@ -926,7 +984,24 @@ def main():
     # The cli checks itself, disable the later checks
     settings.CHECK_EXISTING = False
 
-    # Interactive mode
+    # settings_file = [
+    #     global_settings.INVENTREE_CONFIG,
+    #     global_settings.CONFIG_IPN_PATH,
+    # ]
+    #
+    # if args.settings_inv:
+    #     settings_file[0] = args.settings_inv
+    # if args.settings_ipn:
+    #     settings_file[1] = args.settings_ipn
+    #
+    # settings = {
+    #     **config_interface.load_inventree_user_settings(settings_file[0]),
+    #     **config_interface.load_file(settings_file[1]),
+    # }
+    # load_cache_settings()
+
+    dry = [args.dry == 'all' or args.dry == 'parts', args.dry == 'all' or args.dry == 'assemblies']
+
     if args.interactive:
         while 1:
             print("Valid Types: ", list(REF_TO_CATEGORY.keys()))
@@ -948,7 +1023,7 @@ def main():
             confirm = input("Is this correct (Y/n): ")
             if not len(confirm) or 'Y' in confirm.upper():
                 part = [{'refs': ref+'1', 'manf': manf, 'mpn': mpn, 'qty': 1}]
-                search_and_create(part, False, variants=True)
+                search_and_create(part, dry, variants=True)
             print("--------------------------------")
         return;
 
@@ -971,7 +1046,261 @@ def main():
     assembly = Assembly(ipn, manf, rev)
     res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
-    exit(res)
+    blank_parts = []
+    extra_rows = {}
+    extra_assemblies = {}
+    unique_parts = {}
+    part_list = []
+    part_list_dict = []
+    max_len = max(*ref_dict.values()) + 1
+    for row in list(r)[first_line:]: 
+        if len(row) < max_len:
+            continue
+        conn_mpn = row[ref_dict['conn_mpn']].lstrip()
+        conn_manf = row[ref_dict.get('conn_manf', '')].lstrip()
+        ref = row[ref_dict['refs']]
+        # if conn_mpn is entered, conn_manf must be too
+        if len(conn_mpn):
+            if not (conn_mpn.startswith('[') or conn_mpn.startswith('{')):
+                print("Invalid conn_mpn: ", conn_mpn)
+                # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
+            else:
+                # Make sure fields are stringified
+                conn_mpn = re.sub(r'\[[\s\t]*\[', "[[", conn_mpn)
+                conn_mpn = re.sub(r'\][\s\t]*\]', "]]", conn_mpn)
+                conn_mpn = re.sub(r'([^\]]),', r'\g<1>\', \'', conn_mpn)
+                conn_mpn = re.sub(r'([^\]]): ', r'\g<1>\': ', conn_mpn)
+                conn_mpn = re.sub(r'([^\]])\]', r'\g<1>\']', conn_mpn)
+                conn_mpn = re.sub(r'\[([^\[])', r'[\'\g<1>', conn_mpn)
+                # Only the opening dict bracket needs to be quoted
+                conn_mpn = re.sub("{", "{'", conn_mpn)
+                # Enclose all in square brackets if not dict or already an overall list
+                if not (conn_mpn.startswith('{') or conn_mpn.startswith("[[")):
+                    conn_mpn = "[" + conn_mpn + "]"
+                conn_bom = eval(conn_mpn)
+                bom_type = type(conn_bom)
+                if bom_type not in [list, dict]:
+                    print("Invalid conn_mpn field: ", conn_mpn)
+
+                print("type: ", bom_type)
+                if bom_type == dict:
+                    for k,v in conn_bom.items():
+                        for j in range(0, len(v)):
+                            for i in range(0, len(v[j])):
+                                v[j][i] = v[j][i].lstrip()
+                        if k not in extra_rows.keys():
+                            extra_rows[k] = {}
+                        extra_rows[k][ref] = v
+                else:
+                    for j in range(0, len(conn_bom)):
+                        for i in range(0, len(conn_bom[j])):
+                            conn_bom[j][i] = conn_bom[j][i].lstrip()
+                    if board_ipn not in extra_rows.keys():
+                        extra_rows[board_ipn] = {}
+                    extra_rows[board_ipn][ref] = conn_bom
+
+        mpn = row[ref_dict['mpn']]
+        manf = row[ref_dict['manf']]
+        qty = row[ref_dict['qty']]
+        rev = row[ref_dict['rev']]
+
+        valid_flag = len(ref) and len(qty)
+        if not valid_flag:
+            continue
+        elif not len(mpn):
+            blank_parts.append(ref)
+            continue
+
+        qty = int(qty)
+        part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': qty, 'rev': rev}
+        # New entry or append to existing
+        unique_item = manf + "_" + mpn + "_" + rev
+        # Combine and update
+        if unique_item in unique_parts:
+            updated = copy.deepcopy(unique_parts[unique_item])
+            # Combine refs
+            updated['refs'] += ' ' + ref
+            # Combine qty
+            updated['qty'] += qty
+            # Replace part_list entry with updated entry
+            part_list[part_list.index(unique_parts[unique_item])] = updated
+            # Replace unique_parts entry with updated entry
+            unique_parts[unique_item] = updated
+        # New
+        else:
+            unique_parts[unique_item] = part
+            part_list.append(part)
+
+    # Go through extra_rows and merge
+    # [ref, manf, mpn, qty]
+    for (board, d) in extra_rows.items():
+        for (parent, bom) in d.items():
+            # Split the ref into individual numbers
+            par_r = re.search(r'([A-Z]+)\d', parent).groups()[0]
+            par_i = []
+            par_ranges = re.findall(par_r + r'\d', parent)
+            for rang in par_ranges:
+                item = rang.replace(par_r, "")
+                sp = item.split('-')
+                start = int(sp[0])
+                fin = start + 1
+                # If there is a '-', then the trailing number is the end
+                if len(sp) > 1:
+                    fin = int(fin) + 1
+
+                # append all in the range (x1000)
+                for i in range(start, fin):
+                    # par_i.append(i*1000)
+                    par_i.append(i)
+
+            for entry in bom:
+                [ref, manf, mpn, qty] = entry[:4]
+                qty = int(qty)
+                rev = ''
+                # rev is optional
+                if len(entry) > 4:
+                    rev = entry[4]
+                # No need to sort into indiv items, as the formatting can stay the same
+                # The numbers have to be unique within each ref
+                qty_total = len(par_i)*qty
+                ref_inds = []
+                ref_total = ""
+                for par_n in par_i:
+                    # def ref_mult(matchobj):
+                    #     n = int(matchobj.group(0))
+                    #     return str(par_n + n)
+                    # ref_total += re.sub("\d+", ref_mult, ref) + " "
+
+                    for sub_ref in re.split(',| |\|', ref):
+                        ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
+                ref_total = ref_total[:-1]
+
+                part = {'refs': ref_total, 'manf': manf, 'mpn': mpn, 'qty': qty_total, 'rev': rev}
+
+                # Check for matches in part_list
+                unique_item = manf + "_" + mpn + "_" + rev
+
+                if board == board_ipn:
+                    # Combine and update
+                    if unique_item in unique_parts:
+                        updated = copy.deepcopy(unique_parts[unique_item])
+                        # Combine refs
+                        updated['refs'] += ' ' + ref
+                        # Combine qty
+                        updated['qty'] += qty
+                        # Replace part_list entry with updated entry
+                        part_list[part_list.index(unique_parts[unique_item])] = updated
+                        # Replace unique_parts entry with updated entry
+                        unique_parts[unique_item] = updated
+                    # New
+                    else:
+                        unique_parts[unique_item] = part
+                        part_list.append(part)
+                else:
+                    if board not in extra_assemblies.keys():
+                        extra_assemblies[board] = []
+                    part['refs'] += ":" + board_ipn 
+                    extra_assemblies[board].append(part)
+
+
+    print('List: ', part_list)
+    print('Extra assemblies: ', extra_assemblies)
+
+    if args.replace:
+        #
+        print('Found mpns with generics')
+
+    if len(assembly_dict):
+        # rev can be a list or str:
+        # [Board Rev, Assembly Rev] or Rev
+        rev = assembly_dict['rev']
+        if type(rev) == str:
+            rev = (rev, rev)
+        elif type(rev) != list:
+            print("'rev' cannot be a",type(rev))
+            exit(0)
+            
+        for i in range(0,len(rev)):
+            rev[i] = rev[i].replace('v','').replace('V','')
+
+        print("Rev:", rev)
+        assembly_dict['rev'] = rev[1]
+        images = assembly_dict.get('image', [])
+        attachments = assembly_dict.get('attachments', [])
+        pcb_image = ''
+        if len(images):
+            pcb_image = images[0]
+        if len(attachments):
+            attachments = attachments[0]
+        desc = assembly_dict.get('desc', '')
+        if len(desc):
+            desc = 'PCB ' + desc
+        # IPN of board is one char less than the assembly IPN
+        # Match revision to assembly
+        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
+    (res, mismatch) = search_and_create(part_list, dry, args.variants)
+    possible_generics = []
+    for part in res:
+        if type(part) is tuple:
+            possible_generics.append(part)
+
+    for part in possible_generics:
+        res.remove(part)
+        print(part[0], " could be replaced by: ", part[1])
+
+    if len(res):
+        print("Parts could not be added: ", res)
+    if len(blank_parts):
+        print("Parts have no mpn: ", blank_parts)
+    if len(mismatch):
+        print("Part name doesn't match supplier's (ours, theirs): ", mismatch)
+
+    res = not len(res) and not len(blank_parts) and not len(mismatch)
+    if not dry[1] and res and args.assembly:
+        res &= create_assembly(assembly_dict, part_list)
+        for board, board_list in extra_assemblies.items():
+            assembly_dict['ipn'] = board
+            assembly_dict['name'] = board
+            assembly_dict['desc'] = ''
+            assembly_dict['image'] = []
+            assembly_dict['attachments'] = []
+            res &= create_assembly(assembly_dict, board_list)
+    exit(not res)
 
 if __name__ == '__main__':
     main()
+
+# Snippet to transfer suppliers
+    # REAL_ID=<insert_int>
+    # FAKE_ID=<insert_int>
+    # inventree_interface.connect_to_server()
+    # # print(inventree_api.get_all_companies())
+    #
+    # response = inventree_api.inventree_api.get("/company/"+str(FAKE_ID)+"/", id=str(FAKE_ID))
+    # print(response)
+    # parts = inventree_api.Company(inventree_api.inventree_api, pk=FAKE_ID).getSuppliedParts()
+    # print("Num parts:", len(parts))
+    # fail_flag = False
+    # for p in parts:
+    #     print("SPK:",p.pk, "PK:", p.part, "SKU:", p.SKU)
+    #     local_flag = False
+    #     for _retry in range(0,3):
+    #         try:
+    #             response = inventree_api.inventree_api.patch("company/part/"+str(p.pk),
+    #             {
+    #                 'supplier': REAL_ID,
+    #             },
+    #             headers = {"id": str(p.part)})
+    #             local_flag = True
+    #             break
+    #         except Exception as e:
+    #             if "unique set" in format(e):
+    #                 local_flag = True
+    #                 break
+    #             print(e)
+    #             continue
+    #     if not local_flag:
+    #         print("Failed")
+    #         fail_flag = True
+    #
+    # print("Success?", not fail_flag)
