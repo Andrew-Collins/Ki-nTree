@@ -1073,21 +1073,6 @@ def main():
         print("Invalid CSV Formatting, could not find all the required headers")
         exit(1)
 
-    if args.check:
-        print("Check")
-        inventree_interface.connect_to_server()
-        res = True
-        print("First line: ", first_line)
-        for row in list(r)[first_line:]: 
-            mpn = row[ref_dict['mpn']].lstrip()
-            rev = row[ref_dict['rev']].lstrip()
-            local_res = find_part(mpn, rev) is None
-            print("Res: ", local_res)
-            if local_res:
-                print("Unable to find part: ", mpn, " ", rev)
-            res &= not local_res
-        exit(not res)
-
     # Parse assembly_dict
     assembly_dict = None
     ipn = ''
