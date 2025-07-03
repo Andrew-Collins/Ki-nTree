@@ -649,9 +649,6 @@ def init_argparse() -> argparse.ArgumentParser:
         "-a", "--assembly", required=False,
         help="Create/modify an assembly part, and add the provided items to the BOM. Must be a valid python dict with the following fields: ipn, rev, name (optional, defaults to ipn), desc (optional), append (optional, defaults to False), image (optional, [PCB image, PCBA image] defaults to []), attachments (optional, list of attachments [PCB Attachments, PCBA Attachments], defaults to [])"
     )
-    parser.add_argument("-b", "--bom",
-                        required= False,
-                        help="Path to CSV file, or a CSV string (';' delimited)")
     parser.add_argument(
          "--dry", required=False,
         choices=['all', 'parts', 'assemblies'],
@@ -668,6 +665,12 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("--variants",
                         required= False,
                         help="Create template parts and link to variants (always on in interactive mode)")
+    parser.add_argument("-p", "--path",
+                        required= False,
+                        help="Path to a CSV file, ';' delimited")
+    parser.add_argument("-s", "--string",
+                        required= False,
+                        help="CSV string, ';' delimited")
 
     return parser
 
