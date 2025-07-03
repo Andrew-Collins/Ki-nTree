@@ -1085,7 +1085,7 @@ def main():
 
     # Parse provided list of parts and create assembly if assembly_dict specified
     assembly = Assembly(ipn, manf, rev)
-    res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
+    res = assembly.parse(csv_str, assembly_dict, args.dry, args.variants)
 
     blank_parts = []
     extra_rows = {}
