@@ -33,7 +33,7 @@ USUAL_SUPP = ["Mouser", "Digi-Key", "Element14"]
 
 RENAME_SUPP = {"Digi-Key": "DigiKey"}
 
-REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'] }
+REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'] }
 
 def cap_generic(s: str, params = None) -> str:
     cap_units = ['p','n','u','m','']
@@ -691,10 +691,8 @@ def unique_item(manf, mpn, rev):
     return manf + "_" + mpn + "_" + rev
 
 class Assembly:
-    def __init__(self, ipn, manf, rev):
+    def __init__(self, ipn):
         self.ipn = ipn
-        self.manf = manf
-        self.rev = rev
         self.blanks = []
         self.sub_assemblies = {}
         self.parts = {}
@@ -717,38 +715,32 @@ class Assembly:
         self.parts[curr] = updated
 
     def process_conn(self, ref, apn, manf, rev, conn_manf, conn_mpn):
-        conn_bom = []
         # conn_mpn defaults to 'apn.csv'
         if not len(conn_mpn):
             conn_mpn = apn + '.csv' 
-        # if conn_mpn is entered, conn_manf must be too
-        elif conn_mpn.startswith('['):
+
+        if conn_manf == 'sub':
+            sub = Assembly(apn)
+            sub.csv_parse(conn_mpn, )
+            # TODO basic check of subassembly
+            self.sub_assemblies[apn] = sub
+        elif conn_manf == 'bom':
+            # if conn_mpn is entered, conn_manf must be too
+            if not conn_mpn.startswith('['):
+                print("Invalid conn_mpn: ", conn_mpn)
+                return
             conn_mpn = stringify_list_dict(conn_mpn)
             conn_bom = eval(conn_mpn)
             bom_type = type(conn_bom)
+
             if bom_type != list:
                 print("Invalid conn_mpn field: ", conn_mpn)
                 return
 
-            csv_str = "refs;mpn;manf;qty;rev;conn_mpn;conn_manf;supp;spn\n" 
             for j in range(0, len(conn_bom)):
                 for i in range(0, len(conn_bom[j])):
                     conn_bom[j][i] = conn_bom[j][i].lstrip()
 
-                [refc, manf, mpn, qty] = conn_bom[j]
-                csv_str += "{};{};{};{};;;;;".format(refc + ref, mpn, manf, qty)
-                # # Create part, ref must be made unique buy appending the ref for the owning part
-                # part = {'refs': refc + ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': ''}
-                # self.add_combine_parts(part)
-            conn_mpn = csv_str
-
-        if conn_manf == 'sub':
-            sub = Assembly(apn, manf, rev)
-            sub.csv_parse(conn_mpn, self.path)
-            # TODO basic check of subassembly
-            self.sub_assemblies[apn] = sub
-        elif conn_manf == 'local':
-            for j in range(0, len(conn_bom)):
                 [refc, manf, mpn, qty] = conn_bom[j]
                 # Create part, ref must be made unique buy appending the ref for the owning part
                 part = {'refs': refc + ref, 'manf': manf, 'mpn': mpn, 'qty': int(qty), 'rev': ''}
@@ -894,12 +886,14 @@ class Assembly:
         if assembly_dict is None:
             return res
 
-        # Remove 'V' from rev
-        rev = assembly_dict.get('rev', '').replace('V','').replace('v','')
-        # rev can be a tuple/list:
-        # (Board Rev, Assembly Rev)
+        rev = assembly_dict.get('rev', '')
+        # rev can be a list:
+        # [Board Rev, Assembly Rev]
         if type(rev) == str:
-            rev = (rev, rev)
+            rev = [rev, rev]
+        # Remove 'V' from rev
+        for r in rev:
+            r = r.replace('v', '').replace('V','')
         assembly_dict['rev'] = rev[1]
 
         # Parse attachments
@@ -1036,238 +1030,12 @@ def main():
 
     # Parse assembly_dict
     assembly_dict = None
-    ipn = ''
-    rev = ''
     if args.assembly:
         assembly_dict = eval(args.assembly)
-        ipn = assembly_dict.get('ipn', '')
-        manf = assembly_dict.get('manf', 'Micromelon')
-        rev = assembly_dict.get('rev', '')
 
     # Parse provided list of parts and create assembly if assembly_dict specified
-    assembly = Assembly(ipn, manf, rev)
-    res = assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
-
-    blank_parts = []
-    extra_rows = {}
-    extra_assemblies = {}
-    unique_parts = {}
-    part_list = []
-    part_list_dict = []
-    max_len = max(*ref_dict.values()) + 1
-    for row in list(r)[first_line:]: 
-        if len(row) < max_len:
-            continue
-        conn_mpn = row[ref_dict['conn_mpn']].lstrip()
-        conn_manf = row[ref_dict.get('conn_manf', '')].lstrip()
-        ref = row[ref_dict['refs']]
-        # if conn_mpn is entered, conn_manf must be too
-        if len(conn_mpn):
-            if not (conn_mpn.startswith('[') or conn_mpn.startswith('{')):
-                print("Invalid conn_mpn: ", conn_mpn)
-                # conn_mpn = "['" + conn_manf + "', '" + conn_mpn + "', 1']"
-            else:
-                # Make sure fields are stringified
-                conn_mpn = re.sub(r'\[[\s\t]*\[', "[[", conn_mpn)
-                conn_mpn = re.sub(r'\][\s\t]*\]', "]]", conn_mpn)
-                conn_mpn = re.sub(r'([^\]]),', r'\g<1>\', \'', conn_mpn)
-                conn_mpn = re.sub(r'([^\]]): ', r'\g<1>\': ', conn_mpn)
-                conn_mpn = re.sub(r'([^\]])\]', r'\g<1>\']', conn_mpn)
-                conn_mpn = re.sub(r'\[([^\[])', r'[\'\g<1>', conn_mpn)
-                # Only the opening dict bracket needs to be quoted
-                conn_mpn = re.sub("{", "{'", conn_mpn)
-                # Enclose all in square brackets if not dict or already an overall list
-                if not (conn_mpn.startswith('{') or conn_mpn.startswith("[[")):
-                    conn_mpn = "[" + conn_mpn + "]"
-                conn_bom = eval(conn_mpn)
-                bom_type = type(conn_bom)
-                if bom_type not in [list, dict]:
-                    print("Invalid conn_mpn field: ", conn_mpn)
-
-                print("type: ", bom_type)
-                if bom_type == dict:
-                    for k,v in conn_bom.items():
-                        for j in range(0, len(v)):
-                            for i in range(0, len(v[j])):
-                                v[j][i] = v[j][i].lstrip()
-                        if k not in extra_rows.keys():
-                            extra_rows[k] = {}
-                        extra_rows[k][ref] = v
-                else:
-                    for j in range(0, len(conn_bom)):
-                        for i in range(0, len(conn_bom[j])):
-                            conn_bom[j][i] = conn_bom[j][i].lstrip()
-                    if board_ipn not in extra_rows.keys():
-                        extra_rows[board_ipn] = {}
-                    extra_rows[board_ipn][ref] = conn_bom
-
-        mpn = row[ref_dict['mpn']]
-        manf = row[ref_dict['manf']]
-        qty = row[ref_dict['qty']]
-        rev = row[ref_dict['rev']]
-
-        valid_flag = len(ref) and len(qty)
-        if not valid_flag:
-            continue
-        elif not len(mpn):
-            blank_parts.append(ref)
-            continue
-
-        qty = int(qty)
-        part = {'refs': ref, 'manf': manf, 'mpn': mpn, 'qty': qty, 'rev': rev}
-        # New entry or append to existing
-        unique_item = manf + "_" + mpn + "_" + rev
-        # Combine and update
-        if unique_item in unique_parts:
-            updated = copy.deepcopy(unique_parts[unique_item])
-            # Combine refs
-            updated['refs'] += ' ' + ref
-            # Combine qty
-            updated['qty'] += qty
-            # Replace part_list entry with updated entry
-            part_list[part_list.index(unique_parts[unique_item])] = updated
-            # Replace unique_parts entry with updated entry
-            unique_parts[unique_item] = updated
-        # New
-        else:
-            unique_parts[unique_item] = part
-            part_list.append(part)
-
-    # Go through extra_rows and merge
-    # [ref, manf, mpn, qty]
-    for (board, d) in extra_rows.items():
-        for (parent, bom) in d.items():
-            # Split the ref into individual numbers
-            par_r = re.search(r'([A-Z]+)\d', parent).groups()[0]
-            par_i = []
-            par_ranges = re.findall(par_r + r'\d', parent)
-            for rang in par_ranges:
-                item = rang.replace(par_r, "")
-                sp = item.split('-')
-                start = int(sp[0])
-                fin = start + 1
-                # If there is a '-', then the trailing number is the end
-                if len(sp) > 1:
-                    fin = int(fin) + 1
-
-                # append all in the range (x1000)
-                for i in range(start, fin):
-                    # par_i.append(i*1000)
-                    par_i.append(i)
-
-            for entry in bom:
-                [ref, manf, mpn, qty] = entry[:4]
-                qty = int(qty)
-                rev = ''
-                # rev is optional
-                if len(entry) > 4:
-                    rev = entry[4]
-                # No need to sort into indiv items, as the formatting can stay the same
-                # The numbers have to be unique within each ref
-                qty_total = len(par_i)*qty
-                ref_inds = []
-                ref_total = ""
-                for par_n in par_i:
-                    # def ref_mult(matchobj):
-                    #     n = int(matchobj.group(0))
-                    #     return str(par_n + n)
-                    # ref_total += re.sub("\d+", ref_mult, ref) + " "
-
-                    for sub_ref in re.split(',| |\|', ref):
-                        ref_total += "{}:{}{} ".format(sub_ref,par_r,par_n)
-                ref_total = ref_total[:-1]
-
-                part = {'refs': ref_total, 'manf': manf, 'mpn': mpn, 'qty': qty_total, 'rev': rev}
-
-                # Check for matches in part_list
-                unique_item = manf + "_" + mpn + "_" + rev
-
-                if board == board_ipn:
-                    # Combine and update
-                    if unique_item in unique_parts:
-                        updated = copy.deepcopy(unique_parts[unique_item])
-                        # Combine refs
-                        updated['refs'] += ' ' + ref
-                        # Combine qty
-                        updated['qty'] += qty
-                        # Replace part_list entry with updated entry
-                        part_list[part_list.index(unique_parts[unique_item])] = updated
-                        # Replace unique_parts entry with updated entry
-                        unique_parts[unique_item] = updated
-                    # New
-                    else:
-                        unique_parts[unique_item] = part
-                        part_list.append(part)
-                else:
-                    if board not in extra_assemblies.keys():
-                        extra_assemblies[board] = []
-                    part['refs'] += ":" + board_ipn 
-                    extra_assemblies[board].append(part)
-
-
-    print('List: ', part_list)
-    print('Extra assemblies: ', extra_assemblies)
-
-    if args.replace:
-        #
-        print('Found mpns with generics')
-
-    if len(assembly_dict):
-        # rev can be a list or str:
-        # [Board Rev, Assembly Rev] or Rev
-        rev = assembly_dict['rev']
-        if type(rev) == str:
-            rev = (rev, rev)
-        elif type(rev) != list:
-            print("'rev' cannot be a",type(rev))
-            exit(0)
-            
-        for i in range(0,len(rev)):
-            rev[i] = rev[i].replace('v','').replace('V','')
-
-        print("Rev:", rev)
-        assembly_dict['rev'] = rev[1]
-        images = assembly_dict.get('image', [])
-        attachments = assembly_dict.get('attachments', [])
-        pcb_image = ''
-        if len(images):
-            pcb_image = images[0]
-        if len(attachments):
-            attachments = attachments[0]
-        desc = assembly_dict.get('desc', '')
-        if len(desc):
-            desc = 'PCB ' + desc
-        # IPN of board is one char less than the assembly IPN
-        # Match revision to assembly
-        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
-    (res, mismatch) = search_and_create(part_list, dry, args.variants)
-    possible_generics = []
-    for part in res:
-        if type(part) is tuple:
-            possible_generics.append(part)
-
-    for part in possible_generics:
-        res.remove(part)
-        print(part[0], " could be replaced by: ", part[1])
-
-    if len(res):
-        print("Parts could not be added: ", res)
-    if len(blank_parts):
-        print("Parts have no mpn: ", blank_parts)
-    if len(mismatch):
-        print("Part name doesn't match supplier's (ours, theirs): ", mismatch)
-
-    res = not len(res) and not len(blank_parts) and not len(mismatch)
-    if not dry[1] and res and args.assembly:
-        res &= create_assembly(assembly_dict, part_list)
-        for board, board_list in extra_assemblies.items():
-            assembly_dict['ipn'] = board
-            assembly_dict['name'] = board
-            assembly_dict['desc'] = ''
-            assembly_dict['image'] = []
-            assembly_dict['attachments'] = []
-            res &= create_assembly(assembly_dict, board_list)
-    exit(not res)
+    assembly = Assembly(assembly_dict.get('ipn', ''))
+    assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
 if __name__ == '__main__':
     main()
