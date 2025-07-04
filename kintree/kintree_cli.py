@@ -35,6 +35,8 @@ RENAME_SUPP = {"Digi-Key": "DigiKey"}
 
 REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'] }
 
+CONSUMABLES = {'Wire'}
+
 def cap_generic(s: str, params = None) -> str:
     cap_units = ['p','n','u','m','']
     (val, unit, ) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
@@ -169,7 +171,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
         ipn = part_info.get('manufacturer_part_number', '')
     search_term = ipn
     part_info['IPN'] = ipn
-    print("IPN/Rev: ", ipn, '/', search_form['revision'])
+    print("IPN/Rev: ", ipn, '/', part_info.get('revision', ''))
     if variant:
         part_info['variant'] = variant
     part_info['template'] = template
@@ -698,7 +700,7 @@ class Assembly:
         self.parts = {}
         self.csv = []
         self.headers = {}
-        self.header_row = 0
+        self.first_row = 0
         self.path = []
         
     def add_combine_parts(self, part):
@@ -721,7 +723,7 @@ class Assembly:
 
         if conn_manf == 'sub':
             sub = Assembly(apn)
-            sub.csv_parse(conn_mpn, )
+            sub.csv_parse(conn_mpn,self.path)
             # TODO basic check of subassembly
             self.sub_assemblies[apn] = sub
         elif conn_manf == 'bom':
@@ -765,8 +767,8 @@ class Assembly:
         csv_str = csv_str.split('\n')
         self.csv = list(csv.reader(csv_str, delimiter=';'))
 
-        REF_FIELDS = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn']
-        PASS_MASK = (1 << (len(REF_FIELDS) - 2)) - 1;
+        REF_FIELDS = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn', 'Description']
+        PASS_MASK = (1 << (len(REF_FIELDS) - 6)) - 1;
         for row in self.csv: 
             mask = 0
             self.headers = {}
@@ -785,25 +787,40 @@ class Assembly:
                             break
                     if res:
                         break
-            self.header_row += 1
+            self.first_row += 1
             # The 'supp' and 'spn' are optional
             if mask & PASS_MASK == PASS_MASK:
                 break
 
-        if self.header_row > len(row) - 1:
+        if self.first_row > len(row) - 1:
             print("Invalid CSV Formatting, could not find all the required headers")
             return
 
         max_len = max(*self.headers.values()) + 1
-        for row in self.csv[self.header_row:]: 
+        for row in self.csv[self.first_row:]: 
             if len(row) < max_len:
                 continue
-            conn_mpn = row[self.headers['conn_mpn']].lstrip()
-            conn_manf = row[self.headers.get('conn_manf', '')].lstrip()
             ref = row[self.headers['refs']]
             mpn = row[self.headers['mpn']]
             manf = row[self.headers['manf']]
-            rev = row[self.headers['rev']]
+            if 'rev' in self.headers:
+                rev = row[self.headers['rev']]
+            else:
+                rev = ''
+            if 'conn_mpn' in self.headers:
+                conn_mpn = row[self.headers['conn_mpn']].lstrip()
+                conn_manf = row[self.headers['conn_manf']].lstrip()
+            else:
+                conn_mpn = ''
+                conn_manf = ''
+
+            if len(mpn) == 0 and 'Description' in self.headers:
+                # Check to see if it is a consumable
+                desc = row[self.headers['Description']].replace(',', ' ') 
+                for c in CONSUMABLES:
+                    if c in desc:
+                        manf = 'consumable'
+                        mpn = desc
 
             self.process_conn(ref, mpn, manf, rev, conn_manf, conn_mpn)
 
@@ -825,10 +842,20 @@ class Assembly:
             res += sub.create(dry, variants)
         # Don't run on entries that are sub assemblies
         # they are created later 
+        # Separate consumables here, they are not searchable
+        # through suppliers
         no_sub = []
+        consumables = []
         for p in self.parts.values():
-            if p.get('mpn', '') not in self.sub_assemblies.keys():
+            if p.get('manf', '') == 'consumables':
+                consumables.append(p)
+            elif p.get('mpn', '') not in self.sub_assemblies.keys():
                 no_sub.append(p)
+
+        for c in consumables: 
+            r = create_part({}, category = ['Consumables'], ipn = c, template = True)
+            if r is None:
+                res.append(c)
             
         res += search_and_create(no_sub, dry, variants)
 
@@ -842,7 +869,7 @@ class Assembly:
 
         inventree_interface.connect_to_server()
         res = True
-        for row in self.csv[self.header_row:]: 
+        for row in self.csv[self.first_row:]: 
             mpn = row[self.headers['mpn']].lstrip()
             rev = row[self.headers['rev']].lstrip()
             local_res = find_part(mpn, rev) is None
@@ -930,7 +957,7 @@ class Assembly:
             supp = ''
             spn = ''
             ref = ''
-            for row in self.csv[self.header_row:]:
+            for row in self.csv[self.first_row:]:
                 if row[self.headers['mpn']] != sub.ipn:
                     continue
                 supp = row[self.headers['supp']]
