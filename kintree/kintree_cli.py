@@ -768,7 +768,8 @@ class Assembly:
         self.csv = list(csv.reader(csv_str, delimiter=';'))
 
         REF_FIELDS = ['refs', 'mpn', 'manf', ['qty', 'quantity'], ['rev', 'revision'], 'conn_mpn', 'conn_manf', 'supp', 'spn', 'Description']
-        PASS_MASK = (1 << (len(REF_FIELDS) - 6)) - 1;
+        REF_MIN = 4
+        PASS_MASK = (1 << REF_MIN) - 1;
         for row in self.csv: 
             mask = 0
             self.headers = {}
@@ -789,10 +790,11 @@ class Assembly:
                         break
             self.first_row += 1
             # The 'supp' and 'spn' are optional
+            print("Mask: ", mask)
             if mask & PASS_MASK == PASS_MASK:
                 break
 
-        if self.first_row > len(row) - 1:
+        if self.first_row > len(self.csv) - 1:
             print("Invalid CSV Formatting, could not find all the required headers")
             return
 
