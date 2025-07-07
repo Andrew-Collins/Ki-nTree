@@ -33,7 +33,7 @@ USUAL_SUPP = ["Mouser", "Digi-Key", "Element14"]
 
 RENAME_SUPP = {"Digi-Key": "DigiKey"}
 
-REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'] }
+REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'], 'PSU': ['Power Supply Units'], 'MTR': ['Electromechanical Parts'], 'FAN': ['Electromechanical Parts'], 'SOL': ['Electromechanical Parts']}
 
 CONSUMABLES = {'Wire'}
 
@@ -831,6 +831,7 @@ class Assembly:
         res = []
         for sub in self.sub_assemblies.values():
             res += sub.create(dry, variants)
+            print("Sub: ", sub.ipn, ",", res)
         # Don't run on entries that are sub assemblies
         # they are created later 
         # Separate consumables here, they are not searchable
