@@ -828,10 +828,9 @@ class Assembly:
 
 
     def create(self, dry, variants) -> list: 
-        res = []
+        res = [[], []]
         for sub in self.sub_assemblies.values():
             res += sub.create(dry, variants)
-            print("Sub: ", sub.ipn, ",", res)
         # Don't run on entries that are sub assemblies
         # they are created later 
         # Separate consumables here, they are not searchable
@@ -852,7 +851,7 @@ class Assembly:
             if r is None:
                 res.append(c['mpn'])
             
-        res += search_and_create(no_sub, dry, variants)
+        res = [a + b for (a,b) in zip(res, search_and_create(no_sub, dry, variants))]
 
         return res
 
