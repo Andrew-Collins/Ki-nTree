@@ -427,7 +427,6 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
 
         # Bom parts do not get updated here
         if bom_flag:
-            result.append(mpn)
             continue
         # Special case for PCBs
         elif 'micromelon' in manf.lower() and mpn.lower()[-1] != 'a' and re.search(r"\d{6}", mpn) is not None:
@@ -445,7 +444,6 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
                 break
             if part is not None:
                 print("Found existing part/rev: ", mpn, "/", rev)
-                not_found.append(mpn)
                 continue
                 
             # Create Bare PCB part
@@ -487,15 +485,6 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
             if part_pk and len(curr_part.get('attachments', '')):
                 for attachment in curr_part['attachments']:
                     inventree_api.upload_part_attachment(attachment, part_pk)
-            continue
-        # Template part
-        elif not dry and template_flag:
-            search_form = {}
-            for field in SEARCH_FIELDS_LIST:
-                search_form[field] = ''
-            search_form['name'] = mpn
-            search_form['manufacturer_part_number'] = mpn
-            create_part(search_form, category,  template = True)
             continue
 
         local_res = False
@@ -849,15 +838,18 @@ class Assembly:
         no_sub = []
         consumables = []
         for p in self.parts.values():
-            if p.get('manf', '') == 'consumables':
+            if p.get('manf', '') == 'consumable':
                 consumables.append(p)
             elif p.get('mpn', '') not in self.sub_assemblies.keys():
                 no_sub.append(p)
 
         for c in consumables: 
+            print("Consumable: ", c)
+            if dry[0]:
+                continue
             r = create_part({}, category = ['Consumables'], ipn = c, template = True)
             if r is None:
-                res.append(c)
+                res.append(c['mpn'])
             
         res += search_and_create(no_sub, dry, variants)
 
