@@ -953,9 +953,9 @@ def main():
         desc = assembly_dict.get('desc', '')
         if len(desc):
             desc = 'PCB ' + desc
-        # IPN of board is one char less than the assembly IPN
+        # IPN of board is just the number code, no variants
         # Match revision to assembly
-        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'][:-1], 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
+        part_list.append({'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': assembly_dict['ipn'].split('_')[0].replace('A',''), 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments})
     (res, mismatch) = search_and_create(part_list, dry, args.variants)
     possible_generics = []
     for part in res:
