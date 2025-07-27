@@ -1,6 +1,3 @@
-from sys import exception
-from typing import is_typeddict
-from kintree.config.settings import load_cache_settings
 from kintree.gui.views.main import *
 from kintree.gui.views.settings import *
 from kintree.database import inventree_api
@@ -9,7 +6,6 @@ import re
 import argparse
 import sys
 import csv
-import shutil
 
 DEFAULT_FAB = 'JLCPCB'
 
@@ -37,9 +33,16 @@ REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electron
 
 CONSUMABLES = {'Wire'}
 
-def cap_generic(s: str, params = None) -> str:
+def search_groups(match, text) -> tuple :
+    search = re.search(match, text)
+    if search:
+        return search.groups()
+    else:
+        return ()
+
+def cap_generic(s: str, params = {}) -> str:
     cap_units = ['p','n','u','m','']
-    (val, unit, ) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*([µuUmpP])[ ]*[Ff]*",s).groups()
+    (val, unit, ) = search_groups("((?:[0-9]*[.])?[0-9]+)[ ]*([µuUmpP])[ ]*[Ff]*", s)
     # val = ''
     # # Allow for a missing leading zero
     # if res:
@@ -60,12 +63,12 @@ def cap_generic(s: str, params = None) -> str:
             foot = size
             break
     if 'metric' in s.lower():
-        (foot,) = re.search(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s).groups()
+        (foot,) = search_groups(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+', s)
     # # search in mm
     # if len(foot) == 0:
     #     (x,y,) = re.search("(\d).*x[ ]*(\d)mm",s).groups()
     #     foot = "{}x{}".format(x,y)
-    if len(foot) == 0 and type(params) == dict:
+    if len(foot) == 0:
         package_key = ''
         for key in params.keys():
             print('key: ', key.lower())
@@ -86,8 +89,8 @@ def cap_generic(s: str, params = None) -> str:
             if len(height_key) == 0 or len(size_key) == 0:
                 raise ValueError("Keys for can cap not found")
             # 'mm' is appended in case of a unitless field
-            (height,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*mm",params[height_key]+"mm").groups()
-            (diameter,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*mm",params[size_key]+"mm").groups()
+            (height,) = search_groups("((?:[0-9]*[.])?[0-9]+)[ ]*mm",params[height_key]+"mm")
+            (diameter,) = search_groups("((?:[0-9]*[.])?[0-9]+)[ ]*mm",params[size_key]+"mm")
             # Convert to float to remove trailing zeros
             foot = "{}x{}".format(float(diameter), float(height))
 
@@ -100,20 +103,20 @@ def cap_generic(s: str, params = None) -> str:
                 tol_key = key
                 break
         if len(tol_key):
-            (tol,) = re.search("([0-9]+[.]*[0-9]*%)",params[tol_key]).groups()
+            (tol,) = search_groups("([0-9]+[.]*[0-9]*%)",params[tol_key])
         else:
-            (tol,) = re.search("([0-9]+[.]*[0-9]*%)",s).groups()
+            (tol,) = search_groups("([0-9]+[.]*[0-9]*%)",s)
     else:
         (tol, )  = tol_res.groups()
-    (voltage,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ]*v",s.lower()).groups()
+    (voltage,) = search_groups("((?:[0-9]*[.])?[0-9]+)[ ]*v",s.lower())
 
     if not (len(foot) and len(val) and len(unit) and len(tol) and len(voltage)):
         raise ValueError("Unable to find all parameters: ", foot, val, unit, tol, voltage)
 
     return "C_{}_{}{}_{}V_{}".format(foot, val, unit, voltage, tol)
 
-def res_generic(s: str, params = None) -> str:
-    (val, unit,) = re.search("((?:[0-9]*[.])?[0-9]+)[ ](?!mw|mW|w|W)*([kKmMrR])*[ ]*(?:[Oo][Hh][Mm])*",s).groups()
+def res_generic(s: str, _params = None) -> str:
+    (val, unit,) = search_groups("((?:[0-9]*[.])?[0-9]+)[ ](?!mw|mW|w|W)*([kKmMrR])*[ ]*(?:[Oo][Hh][Mm])*",s)
     # print("val: ", val, " unit: ", unit)
     # Make sure 'k' isn't capitalised
     if unit is None:
@@ -134,9 +137,9 @@ def res_generic(s: str, params = None) -> str:
             foot = size
             break
     if 'metric' in s.lower():
-        (foot,) = re.search(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s).groups()
+        (foot,) = search_groups(r'(\d{4}).+[Mm][Ee][Tt][Rr][Ii][Cc].+',s)
 
-    (tol,) = re.search("((?:[0-9]*[.])?[0-9]+%)",s).groups()
+    (tol,) = search_groups("((?:[0-9]*[.])?[0-9]+%)",s)
 
     return "R_{}_{}{}_{}".format(foot, val, unit, tol)
 
@@ -164,7 +167,7 @@ def find_part(mpn, rev):
     return part
 
 
-def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False):
+def create_part(search_form, category = [], ipn = '', template = False, variant = None, assembly = False, trackable = False) -> int:
     part_info = copy.deepcopy(search_form)
     # Update IPN (later overwritten)
     if len(ipn) == 0:
@@ -179,11 +182,12 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
     part_info['trackable'] = trackable
 
     part = None
+    part_pk = -1
     # Search for the IPN
     for _retry in range(0,3):
         try:
             part = inventree_api.get_part_from_ipn(search_term, search_form['revision'])
-            part_pk = None
+            part_pk = -1
 
             # Account for revision mismatch
             if part and part.revision != search_form['revision']:
@@ -202,7 +206,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
             else:
                 if category is None:
                     print("Category cannot be blank when creating new part")
-                    return None
+                    return -1
                 part_info['category_tree'] = category
 
                 if assembly:
@@ -231,7 +235,7 @@ def create_part(search_form, category = [], ipn = '', template = False, variant 
 
 def is_template(ref: str, mpn: str) -> tuple[bool, str]:
     # Only care about the first one in the list
-    ref_prefix = re.search("([A-Z]+)[0123456789]", ref).groups()[0]
+    ref_prefix = search_groups("([A-Z]+)[0123456789]", ref)[0]
 
     return (mpn[:(len(ref_prefix)+1)] == ref_prefix + '_', ref_prefix)
 
@@ -352,7 +356,7 @@ def run_search(supplier, pn, manf = ''):
 def find_generic(ref_prefix, search_form, raw_form, category, create = False):
     generic = ''
     try: 
-        generic = ref_to_generic[ref_prefix](search_form['description'], params=raw_form['parameters'])
+        generic = ref_to_generic[ref_prefix](search_form['description'], params=raw_form.get('parameters', {}))
     except ValueError as e:
         print("Unable to parse generic: ", e)
     except:
@@ -449,7 +453,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
             # Create Bare PCB part
             elif not dry[1] and 'a' not in mpn.lower():
                 search_form = {}
-                for field in search_fields_list:
+                for field in SEARCH_FIELDS_LIST:
                     search_form[field] = ''
                 search_form['name'] = mpn
                 search_form['manufacturer_name'] = manf
@@ -510,7 +514,7 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
         if part:
             chosen_ipn = mpn
         else:
-            chosen_ipn = None
+            chosen_ipn = ''
         ipn_match = False
         valid_supp_mpn = None
         for supp in USUAL_SUPP:
@@ -519,10 +523,10 @@ def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tupl
                 continue
             local_res = True
             print("Found part")
-            supp_mpn = search_form.get('manufacturer_part_number', None)
+            supp_mpn = search_form.get('manufacturer_part_number', '')
             if not valid_supp_mpn:
                 valid_supp_mpn = supp_mpn
-            if chosen_ipn is None:
+            if not chosen_ipn:
                 chosen_ipn = supp_mpn 
 
             # Check if the ipn matches this supplier's mpn
@@ -664,14 +668,14 @@ def init_argparse() -> argparse.ArgumentParser:
 
 def stringify_list_dict(obj):
     # Make sure fields are stringified
-    obj = re.sub("\[[\s\t]*\[", "[[", obj)
-    obj = re.sub("\][\s\t]*\]", "]]", obj)
-    obj = re.sub("([^\]]),", "\g<1>', '", obj)
-    obj = re.sub("([^\]]): ", "\g<1>': ", obj)
-    obj = re.sub("([^\]])\]", "\g<1>']", obj)
-    obj = re.sub("\[([^\[])", "['\g<1>", obj)
+    obj = re.sub(r"\[[\s\t]*\[", "[[", obj)
+    obj = re.sub(r"\][\s\t]*\]", "]]", obj)
+    obj = re.sub(r"([^\]]),", r"\g<1>', '", obj)
+    obj = re.sub(r"([^\]]): ", r"\g<1>': ", obj)
+    obj = re.sub(r"([^\]])\]", r"\g<1>']", obj)
+    obj = re.sub(r"\[([^\[])", r"['\g<1>", obj)
     # Only the opening dict bracket needs to be quoted
-    obj = re.sub("{", "{'", obj)
+    obj = re.sub(r"{", r"{'", obj)
     # Enclose all in square brackets if not dict or already an overall list
     if not obj.startswith("[["):
         obj = "[" + obj + "]"
@@ -690,7 +694,7 @@ class Assembly:
         self.csv = []
         self.headers = {}
         self.first_row = 0
-        self.path = []
+        self.path = ''
         
     def add_combine_parts(self, part):
         curr = unique_item(part['manf'], part['mpn'], part['rev'])
@@ -705,7 +709,7 @@ class Assembly:
         # Updated parts dict
         self.parts[curr] = updated
 
-    def process_conn(self, ref, apn, manf, rev, conn_manf, conn_mpn):
+    def process_conn(self, ref, apn, manf, _rev, conn_manf, conn_mpn):
         # conn_mpn defaults to 'apn.csv'
         if not len(conn_mpn):
             conn_mpn = apn + '.csv' 
@@ -762,8 +766,7 @@ class Assembly:
         for row in self.csv: 
             mask = 0
             self.headers = {}
-            for item in row:
-                i = row.index(item)
+            for (i, item) in enumerate(row):
                 for j, field in enumerate(REF_FIELDS):
                     keys = field
                     if type(field) == str:
@@ -883,10 +886,6 @@ class Assembly:
         # Create all bom parts (including those in sub assemblies)
         res = self.create(dry, variants)
 
-        # if args.replace:
-        #     #
-        #     print("Found mpns with generics")
-
         possible_generics = []
         for part in res:
             if type(part) is tuple:
@@ -904,8 +903,8 @@ class Assembly:
 
         res = not len(res) and not len(self.blanks)
 
-        if assembly_dict is None:
-            return res
+        if not assembly_dict:
+            return None
 
         rev = assembly_dict.get('rev', '')
         # rev can be a list:
@@ -1003,22 +1002,6 @@ def main():
     # The cli checks itself, disable the later checks
     settings.CHECK_EXISTING = False
 
-    # settings_file = [
-    #     global_settings.INVENTREE_CONFIG,
-    #     global_settings.CONFIG_IPN_PATH,
-    # ]
-    #
-    # if args.settings_inv:
-    #     settings_file[0] = args.settings_inv
-    # if args.settings_ipn:
-    #     settings_file[1] = args.settings_ipn
-    #
-    # settings = {
-    #     **config_interface.load_inventree_user_settings(settings_file[0]),
-    #     **config_interface.load_file(settings_file[1]),
-    # }
-    # load_cache_settings()
-
     dry = [args.dry == 'all' or args.dry == 'parts', args.dry == 'all' or args.dry == 'assemblies']
 
     if args.interactive:
@@ -1054,9 +1037,10 @@ def main():
     if args.assembly:
         assembly_dict = eval(args.assembly)
 
-    # Parse provided list of parts and create assembly if assembly_dict specified
-    assembly = Assembly(assembly_dict.get('ipn', ''))
-    assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
+    if assembly_dict:
+        # Parse provided list of parts and create assembly if assembly_dict specified
+        assembly = Assembly(assembly_dict.get('ipn', ''))
+        assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
 
 if __name__ == '__main__':
     main()

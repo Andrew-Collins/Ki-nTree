@@ -266,7 +266,7 @@ def get_category_parameters(category_id: int) -> list:
     return parameter_templates
 
 
-def get_part_info(part_id: int) -> str:
+def get_part_info(part_id: int) -> dict:
     ''' Get InvenTree part info from specified Part ID '''
     global inventree_api
 
@@ -289,7 +289,7 @@ def set_part_number(part_id: int, ipn: str) -> bool:
         return False
 
 
-def get_part_from_ipn(part_ipn='', rev='') -> int | None:
+def get_part_from_ipn(part_ipn='', rev=''):
     ''' Get Part ID from Part IPN '''
     global inventree_api
 
@@ -307,7 +307,7 @@ def get_part_from_ipn(part_ipn='', rev='') -> int | None:
     return part
 
 
-def fetch_part(part_id='', part_ipn='') -> int:
+def fetch_part(part_id='', part_ipn=''):
     ''' Fetch part from database using either ID or IPN '''
     from requests.exceptions import HTTPError
     global inventree_api
