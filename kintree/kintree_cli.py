@@ -936,9 +936,8 @@ class Assembly:
         if assembly_dict.get('category', '') == 'PCBA':
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
-            board_ipn = assembly_dict['ipn'][:-1]
+            board_ipn = assembly_dict['ipn'].split('_')[0].replace('A','')
             self.parts[board_ipn] = {'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': board_ipn, 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments}
-
 
         # Only create assembly if no errors, not a dry run
         # and assembly dict is specified
