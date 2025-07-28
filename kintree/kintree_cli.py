@@ -429,9 +429,10 @@ def search_and_create(part_list, dry: list[bool], variants=False, rev_default = 
             print("Bom flag: ", bom_flag, bom_items)
             print("Found existing part: ", mpn, "/", rev)
 
-        # Bom parts do not get updated here
-        if bom_flag:
-            continue
+            # Bom and template parts do not get updated here
+            if bom_flag or template_flag:
+                continue
+
         # Special case for PCBs
         elif 'micromelon' in manf.lower() and mpn.lower()[-1] != 'a' and re.search(r"\d{6}", mpn) is not None:
             # Must have a valid revision
@@ -446,6 +447,7 @@ def search_and_create(part_list, dry: list[bool], variants=False, rev_default = 
                 except:
                     continue
                 break
+
             if part is not None:
                 print("Found existing part/rev: ", mpn, "/", rev)
                 continue
@@ -459,6 +461,9 @@ def search_and_create(part_list, dry: list[bool], variants=False, rev_default = 
                 search_form['manufacturer_name'] = manf
                 search_form['manufacturer_part_number'] = mpn
                 search_form['revision'] = rev
+                # Default PCB manufacturer
+                search_form['supplier_name'] = DEFAULT_FAB
+                search_form['supplier_part_number'] = mpn
                 if len(curr_part.get('image', '')):
                     search_form['image'] = curr_part['image']
                 if len(curr_part.get('desc', '')):
@@ -477,18 +482,7 @@ def search_and_create(part_list, dry: list[bool], variants=False, rev_default = 
             search_form['name'] = mpn
             search_form['manufacturer_name'] = manf
             search_form['manufacturer_part_number'] = mpn
-            search_form['revision'] = rev
-            # Default PCB manufacturer
-            search_form['supplier_name'] = DEFAULT_FAB
-            search_form['supplier_part_number'] = mpn
-            if len(curr_part.get('image', '')):
-                search_form['image'] = curr_part['image']
-            if len(curr_part.get('desc', '')):
-                search_form['description'] = curr_part['desc']
             part_pk = create_part(search_form, category, trackable=True)
-            if part_pk and len(curr_part.get('attachments', '')):
-                for attachment in curr_part['attachments']:
-                    inventree_api.upload_part_attachment(attachment, part_pk)
             continue
 
         local_res = False
@@ -904,6 +898,7 @@ class Assembly:
         res = not len(res) and not len(self.blanks)
 
         if not assembly_dict:
+            print("No assembly information provided")
             return None
 
         rev = assembly_dict.get('rev', '')
