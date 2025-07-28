@@ -896,6 +896,7 @@ class Assembly:
             print("Parts have no mpn: ", self.blanks)
 
         res = not len(res) and not len(self.blanks)
+        print("Parts res:", res)
 
         if not assembly_dict:
             print("No assembly information provided")
@@ -932,13 +933,19 @@ class Assembly:
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
             board_ipn = assembly_dict['ipn'].split('_')[0].replace('A','')
-            self.parts[board_ipn] = {'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': board_ipn, 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments}
+            pcb_part = {'refs': 'BRD1', 'manf': 'Micromelon', 'mpn': board_ipn, 'rev': rev[0], 'qty': 1, 'image': pcb_image, 'desc': desc, 'attachments': attachments}
+            self.parts[board_ipn] = pcb_part 
+            # Update result variable, the PCB creation must succeed
+            print("Creating PCB:", board_ipn)
+            res &= not len(search_and_create([pcb_part], dry))
 
         # Only create assembly if no errors, not a dry run
         # and assembly dict is specified
         if dry[1] or not res or not len(assembly_dict):
+            print("SC Assembly:", res, dry[1], len(assembly_dict))
             return None 
 
+        print("Sub Assemblies:", self.sub_assemblies)
         for sub in self.sub_assemblies.values():
             # Find the supplier and spn from the top level assembly
             supp = ''
