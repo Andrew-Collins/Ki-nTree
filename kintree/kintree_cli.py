@@ -263,7 +263,8 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
         search_form[field] = ''
 
     # Process what type of assembly
-    category = assembly.get('category', '')
+    # Defaults to ['End Products']
+    category = REF_TO_CATEGORY(assembly.get('category', 'TOP'))
     print("Category:", category)
 
     if inventree_api.get_inventree_category_id(category) == -1:
@@ -949,7 +950,8 @@ class Assembly:
             desc = 'PCB ' + desc
 
         # Add the bare board if the assembly is PCBA
-        if assembly_dict.get('category', '') == 'PCBA':
+        if assembly_dict.get('category', '') == 'PCBA' or 'A' in assembly_dict['ipn']:
+            assembly_dict['category'] = 'PCBA'
             # IPN of board is one char less than the assembly IPN
             # Match revision to assembly
             board_ipn = assembly_dict['ipn'].split('_')[0].replace('A','')
