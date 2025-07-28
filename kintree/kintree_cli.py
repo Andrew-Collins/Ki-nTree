@@ -929,8 +929,7 @@ class Assembly:
         if type(rev) == str:
             rev = [rev, rev]
         # Remove 'V' from rev
-        for r in rev:
-            r = r.replace('v', '').replace('V','')
+        rev = [r.replace('v', '').replace('V','') for r in rev]
         assembly_dict['rev'] = rev[1]
 
         # Parse attachments

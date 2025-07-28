@@ -741,7 +741,7 @@ def is_new_supplier_part(supplier_name: str, supplier_sku: str):
     return True, False
 
 
-def create_manufacturer_part(part_id: int, manufacturer_name: str, manufacturer_mpn: str, description: str, datasheet: str) -> bool:
+def create_manufacturer_part(part_id: int, manufacturer_name: str, manufacturer_mpn: str, description: str, datasheet: str) -> int:
     ''' Create InvenTree manufacturer part
 
         part_id: Part the manufacturer data is linked to
@@ -769,12 +769,12 @@ def create_manufacturer_part(part_id: int, manufacturer_name: str, manufacturer_
         })
 
         if manufacturer_part:
-            return True
+            return manufacturer_part.pk
     else:
         cprint(f'[TREE]\tError: Manufacturer "{manufacturer_name}" not found (failed to create manufacturer part)',
                silent=settings.SILENT)
 
-    return False
+    return 0
 
 
 def create_supplier_part(part_id: int, manf_part_id: int, supplier_name: str, supplier_sku: str, description: str, link: str):

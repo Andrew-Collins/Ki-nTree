@@ -538,17 +538,16 @@ def inventree_create_manufacturer_part(part_id: int, manufacturer_name: str, man
         cprint('[INFO]\tManufacturer part already exists, skipping.', silent=settings.SILENT)
     else:
         # Create a new manufacturer part
-        is_manufacturer_part_created = inventree_api.create_manufacturer_part(part_id=part_id,
+        manufacturer_part = inventree_api.create_manufacturer_part(part_id=part_id,
                                                                               manufacturer_name=manufacturer_name,
                                                                               manufacturer_mpn=manufacturer_mpn,
                                                                               datasheet=datasheet,
                                                                               description=description)
 
-        if is_manufacturer_part_created:
+        if manufacturer_part:
             cprint('[INFO]\tSuccess: Added new manufacturer part', silent=settings.SILENT)
-            return True
-
-    return False
+            return manufacturer_part
+    return 0
 
 
 def inventree_create_supplier_part(part) -> bool:
@@ -730,7 +729,7 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                 cprint('[INFO]\tManufacturer part already exists, skipping.', silent=settings.SILENT)
             else:
                 # Create a new manufacturer part
-                is_manufacturer_part_created = inventree_api.create_manufacturer_part(
+                manufacturer_part = inventree_api.create_manufacturer_part(
                     part_id=part_pk,
                     manufacturer_name=manufacturer_name,
                     manufacturer_mpn=manufacturer_mpn,
@@ -738,7 +737,7 @@ def inventree_create(part_info: dict, stock=None, kicad=False, symbol=None, foot
                     description=inventree_part['description'],
                 )
 
-                if is_manufacturer_part_created:
+                if manufacturer_part:
                     cprint('[INFO]\tSuccess: Added new manufacturer part', silent=settings.SILENT)
 
 
@@ -915,14 +914,14 @@ def inventree_create_alternate(part_info: dict, part_id='', part_ipn='', show_pr
         if manufacturer_part:
             cprint('[INFO]\tManufacturer part already exists, skipping.', silent=settings.SILENT)
         else:
-            is_manufacturer_part_created = inventree_create_manufacturer_part(
+            manufacturer_part = inventree_create_manufacturer_part(
                 part_id=part_pk,
                 manufacturer_name=manufacturer_name,
                 manufacturer_mpn=manufacturer_mpn,
                 datasheet=datasheet,
                 description=part_description)
             
-            if is_manufacturer_part_created:
+            if manufacturer_part:
                 cprint('[INFO]\tSuccess: Added new manufacturer part', silent=settings.SILENT)
     else:
         cprint('[INFO]\tWarning: No manufacturer part to create', silent=settings.SILENT)
