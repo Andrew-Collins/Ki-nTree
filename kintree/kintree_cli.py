@@ -1,3 +1,4 @@
+import enum
 from kintree.gui.views.main import *
 from kintree.gui.views.settings import *
 from kintree.database import inventree_api
@@ -32,6 +33,20 @@ RENAME_SUPP = {"Digi-Key": "DigiKey"}
 REF_TO_CATEGORY = {'R': ['Electronic Components', 'Resistors'], 'RN': ['Electronic Components', 'Resistors'], 'C':  ['Electronic Components', 'Capacitors'], 'CN':  ['Electronic Components', 'Capacitors'], 'D': ['Electronic Components', 'Diodes'], 'F': ['Electronic Components', 'Fuses'], 'Y': ['Electronic Components', 'Crystals'], 'J': ['Electronic Components', 'Connectors'], 'Q': ['Electronic Components', 'Transistors'], 'FB': ['Electronic Components', 'Ferrites'], 'U': ['Electronic Components', 'ICs'], 'L': ['Electronic Components', 'Inductors'], 'H': ['Standoffs & Spacers'], 'FL': ['Electronic Components', 'Chokes & Filters'], 'BRD': ['Bare PCBs'], 'CBL': ['Cable'], 'CBA': ['Cable Assemblies'], 'P': ['Cable Parts'], 'W': ['Cable Parts'] , 'B': ['Batteries'], 'MOD': ['Electronic Components', 'Modules'], 'SNS': ['Electronic Components', 'Sensors'], 'DSP': ['Displays'], 'SW': ['Switches & Buttons'], 'BT': ['Battery Holders'], 'TH': ['Electronic Components', 'Thermistors'], 'PCBA': ['Assembled PCBs'], 'TOP': ['End Products'], 'PSU': ['Power Supply Units'], 'MTR': ['Electromechanical Parts'], 'FAN': ['Electromechanical Parts'], 'SOL': ['Electromechanical Parts']}
 
 CONSUMABLES = {'Wire'}
+
+COLOR = {
+    "HEADER": "\033[95m",
+    "BLUE": "\033[94m",
+    "GREEN": "\033[92m",
+    "RED": "\033[91m",
+    "ENDC": "\033[0m",
+}
+
+# Return Codes
+SUCCESS = 0
+PARTS_FAIL = 1
+PCB_FAIL = 2
+ASSEMBLY_FAIL = 3
 
 def search_groups(match, text) -> tuple :
     search = re.search(match, text)
@@ -874,33 +889,38 @@ class Assembly:
     def assembly(self, assembly_dict) -> bool:
         return create_assembly(assembly_dict, list(self.parts.values()))
 
-    def parse(self, csv_str, assembly_dict, dry, variants) -> dict | None:
+    def parse(self, csv_str, assembly_dict, dry, variants) -> int:
         self.csv_parse(csv_str)
 
         # Create all bom parts (including those in sub assemblies)
         res = self.create(dry, variants)
 
         possible_generics = []
-        for part in res:
+        for part in res[0]:
             if type(part) is tuple:
                 possible_generics.append(part)
 
         for part in possible_generics:
             res.remove(part)
-            print(part[0], " could be replaced by: ", part[1])
+            print(COLOR['BLUE'], "INFO: ", part[0], " could be replaced by: ", part[1])
 
-        if len(res):
-            print("Parts could not be added: ", res)
 
-        if len(self.blanks):
-            print("Parts have no mpn: ", self.blanks)
+        res = not len(res[0]) and not len(res[1]) and not len(self.blanks)
 
-        res = not len(res) and not len(self.blanks)
-        print("Parts res:", res)
+        # Return if part error
+        if not res:
+            if len(self.blanks):
+                print(COLOR['RED'], "ERROR: Parts have no mpn: ", self.blanks)
+            if len(res[0]):
+                print(COLOR['RED'], "ERROR: Parts could not be found: ", res[0])
+            if len(res[1]):
+                print(COLOR['RED'], "ERROR: Part mpns mismatch supplier's: ", res[1])
+
+            return PARTS_FAIL
 
         if not assembly_dict:
             print("No assembly information provided")
-            return None
+            return SUCCESS
 
         rev = assembly_dict.get('rev', '')
         # rev can be a list:
@@ -941,9 +961,12 @@ class Assembly:
 
         # Only create assembly if no errors, not a dry run
         # and assembly dict is specified
-        if dry[1] or not res or not len(assembly_dict):
-            print("SC Assembly:", res, dry[1], len(assembly_dict))
-            return None 
+        if dry[1] or not res:
+            print("SC Assembly:", dry[1], res)
+            if dry[1]:
+                return SUCCESS
+            else:
+                return PCB_FAIL
 
         print("Sub Assemblies:", self.sub_assemblies)
         for sub in self.sub_assemblies.values():
@@ -974,8 +997,8 @@ class Assembly:
             res &= sub.assembly(sub_dict)
         res &= self.assembly(assembly_dict)
         if not res:
-            return None
-        return assembly_dict
+            return ASSEMBLY_FAIL
+        return SUCCESS
 
 def main():
     parser = init_argparse()
@@ -1041,9 +1064,12 @@ def main():
     if assembly_dict:
         # Parse provided list of parts and create assembly if assembly_dict specified
         assembly = Assembly(assembly_dict.get('ipn', ''))
-        assembly.parse(args.bom, assembly_dict, dry, args.variants)
+        exit(assembly.parse(args.bom, assembly_dict, dry, args.variants))
 
 if __name__ == '__main__':
+    import os
+    if os.name == 'nt': # Only if we are running on Windows
+        os.system("")  # enables ansi escape characters in terminal
     main()
 
 # Snippet to transfer suppliers
