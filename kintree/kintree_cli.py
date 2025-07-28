@@ -388,7 +388,7 @@ def find_generic(ref_prefix, search_form, raw_form, category, create = False):
     return None
 
 
-def search_and_create(part_list, dry, variants=False, rev_default = '',) -> tuple[list[str],list[tuple[str, str]]]:
+def search_and_create(part_list, dry: list[bool], variants=False, rev_default = '',) -> tuple[list[str],list[tuple[str, str]]]:
     print("Dry: ", dry)
     inventree_interface.connect_to_server()
     not_found = []
@@ -941,7 +941,7 @@ class Assembly:
 
         # Only create assembly if no errors, not a dry run
         # and assembly dict is specified
-        if dry or not res or not len(assembly_dict):
+        if dry[1] or not res or not len(assembly_dict):
             return None 
 
         for sub in self.sub_assemblies.values():
@@ -1039,7 +1039,7 @@ def main():
     if assembly_dict:
         # Parse provided list of parts and create assembly if assembly_dict specified
         assembly = Assembly(assembly_dict.get('ipn', ''))
-        assembly.parse(args.bom, assembly_dict, args.dry, args.variants)
+        assembly.parse(args.bom, assembly_dict, dry, args.variants)
 
 if __name__ == '__main__':
     main()
