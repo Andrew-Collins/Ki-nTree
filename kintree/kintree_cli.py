@@ -958,7 +958,8 @@ class Assembly:
             self.parts[board_ipn] = pcb_part 
             # Update result variable, the PCB creation must succeed
             print("Creating PCB:", board_ipn)
-            res &= not len(search_and_create([pcb_part], dry))
+            pcb_res = search_and_create([pcb_part], dry)
+            res &= not len(pcb_res[0]) and not len(pcb_res[1]) 
 
         # Only create assembly if no errors, not a dry run
         # and assembly dict is specified
