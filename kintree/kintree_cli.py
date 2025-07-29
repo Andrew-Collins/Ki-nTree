@@ -894,28 +894,28 @@ class Assembly:
         self.csv_parse(csv_str)
 
         # Create all bom parts (including those in sub assemblies)
-        res = self.create(dry, variants)
+        parts_res = self.create(dry, variants)
 
         possible_generics = []
-        for part in res[0]:
+        for part in parts_res[0]:
             if type(part) is tuple:
                 possible_generics.append(part)
 
         for part in possible_generics:
-            res.remove(part)
+            parts_res.remove(part)
             print(COLOR['BLUE'], "INFO: ", part[0], " could be replaced by: ", part[1])
 
 
-        res = not len(res[0]) and not len(res[1]) and not len(self.blanks)
+        res = not len(parts_res[0]) and not len(parts_res[1]) and not len(self.blanks)
 
         # Return if part error
         if not res:
             if len(self.blanks):
                 print(COLOR['RED'], "ERROR: Parts have no mpn: ", self.blanks)
-            if len(res[0]):
-                print(COLOR['RED'], "ERROR: Parts could not be found: ", res[0])
-            if len(res[1]):
-                print(COLOR['RED'], "ERROR: Part mpns mismatch supplier's: ", res[1])
+            if len(parts_res[0]):
+                print(COLOR['RED'], "ERROR: Parts could not be found: ", parts_res[0])
+            if len(parts_res[1]):
+                print(COLOR['RED'], "ERROR: Part mpns mismatch supplier's: ", parts_res[1])
 
             return PARTS_FAIL
 
