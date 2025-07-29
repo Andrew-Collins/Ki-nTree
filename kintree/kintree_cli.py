@@ -450,7 +450,7 @@ def search_and_create(part_list, dry: list[bool], variants=False, rev_default = 
                 continue
 
         # Special case for PCBs
-        elif 'micromelon' in manf.lower() and mpn.lower()[-1] != 'a' and re.search(r"\d{6}", mpn) is not None:
+        if 'micromelon' in manf.lower() and mpn.lower()[-1] != 'a' and re.search(r"\d{6}", mpn) is not None:
             # Must have a valid revision
             if not len(rev):
                 print("No revision found for internal part")
