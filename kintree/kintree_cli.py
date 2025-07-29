@@ -264,7 +264,7 @@ def create_assembly(assembly: dict, bom: list[dict]) -> bool:
 
     # Process what type of assembly
     # Defaults to ['End Products']
-    category = REF_TO_CATEGORY(assembly.get('category', 'TOP'))
+    category = REF_TO_CATEGORY.get((assembly.get('category', 'TOP')), [])
     print("Category:", category)
 
     if inventree_api.get_inventree_category_id(category) == -1:
